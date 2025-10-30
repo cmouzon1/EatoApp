@@ -56,6 +56,7 @@ Preferred communication style: Simple, everyday language.
 - **Trucks**: Food truck listings with details, images, menu items, pricing
 - **Events**: Event listings with requirements and details
 - **Bookings**: Connection between trucks and events with status tracking
+- **Truck Unavailability**: Calendar system for truck owners to block specific dates when unavailable for bookings
 
 **Key Backend Patterns:**
 - Storage abstraction layer (`DatabaseStorage` implementing `IStorage`)
@@ -68,7 +69,7 @@ Preferred communication style: Simple, everyday language.
 **Database:**
 - PostgreSQL (via Neon serverless)
 - Schema managed through Drizzle ORM with migrations in `migrations/` directory
-- Tables: users, trucks, events, bookings, sessions
+- Tables: users, trucks, events, bookings, truck_unavailability, sessions
 
 **Schema Highlights:**
 - UUID-based user IDs for compatibility with OIDC providers

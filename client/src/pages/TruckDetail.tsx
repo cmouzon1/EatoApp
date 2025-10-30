@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { Truck as TruckType } from "@shared/schema";
+import { Truck as TruckType, User } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
 import { ArrowLeft, Clock, DollarSign, MapPin, Phone, Globe, Instagram, Facebook } from "lucide-react";
 import placeholderTruck from "@assets/generated_images/Orange_food_truck_exterior_7079da09.png";
 import placeholderFood from "@assets/generated_images/Gourmet_tacos_close-up_f3279562.png";
@@ -12,6 +13,10 @@ import placeholderFood from "@assets/generated_images/Gourmet_tacos_close-up_f32
 export default function TruckDetail() {
   const [, params] = useRoute("/trucks/:id");
   const truckId = params?.id ? parseInt(params.id) : null;
+
+  const { data: user } = useQuery<User>({
+    queryKey: ["/api/auth/user"],
+  });
 
   const { data: truck, isLoading } = useQuery<TruckType>({
     queryKey: [`/api/trucks/${truckId}`],
@@ -162,6 +167,14 @@ export default function TruckDetail() {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Availability Calendar */}
+            {truckId && (
+              <AvailabilityCalendar 
+                truckId={truckId} 
+                isOwner={user?.id === truck.ownerId} 
+              />
+            )}
 
             {/* Social Links */}
             {(socialLinks.website || socialLinks.instagram || socialLinks.facebook) && (

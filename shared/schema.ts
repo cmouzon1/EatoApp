@@ -65,12 +65,29 @@ export const trucks = pgTable("trucks", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Truck unavailability table (for calendar blocking) - defined before trucksRelations
+export const truckUnavailability = pgTable("truck_unavailability", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  truckId: integer("truck_id").notNull().references(() => trucks.id),
+  blockedDate: timestamp("blocked_date").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const trucksRelations = relations(trucks, ({ one, many }) => ({
   owner: one(users, {
     fields: [trucks.ownerId],
     references: [users.id],
   }),
   bookings: many(bookings),
+  unavailableDates: many(truckUnavailability),
+}));
+
+export const truckUnavailabilityRelations = relations(truckUnavailability, ({ one }) => ({
+  truck: one(trucks, {
+    fields: [truckUnavailability.truckId],
+    references: [trucks.id],
+  }),
 }));
 
 // Events table
@@ -148,6 +165,11 @@ export const insertBookingSchema = createInsertSchema(bookings).omit({
   updatedAt: true,
 });
 
+export const insertTruckUnavailabilitySchema = createInsertSchema(truckUnavailability).omit({
+  id: true,
+  createdAt: true,
+});
+
 // TypeScript types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -161,3 +183,6 @@ export type InsertEvent = z.infer<typeof insertEventSchema>;
 
 export type Booking = typeof bookings.$inferSelect;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
+
+export type TruckUnavailability = typeof truckUnavailability.$inferSelect;
+export type InsertTruckUnavailability = z.infer<typeof insertTruckUnavailabilitySchema>;

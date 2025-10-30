@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertTruckSchema, insertEventSchema, insertBookingSchema } from "@shared/schema";
+import { insertTruckSchema, insertEventSchema, insertBookingSchema, insertTruckUnavailabilitySchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -143,6 +143,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error updating truck:", error);
       res.status(500).json({ message: "Failed to update truck" });
+    }
+  });
+
+  // Truck unavailability routes
+  app.get('/api/trucks/:id/unavailability', async (req, res) => {
+    try {
+      const truckId = parseInt(req.params.id);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      
+      const unavailability = await storage.getUnavailabilityByTruck(truckId);
+      res.json(unavailability);
+    } catch (error) {
+      console.error("Error fetching truck unavailability:", error);
+      res.status(500).json({ message: "Failed to fetch unavailability" });
+    }
+  });
+
+  app.post('/api/trucks/:id/unavailability', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const truckId = parseInt(req.params.id);
+      
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      
+      const truck = await storage.getTruckById(truckId);
+      if (!truck) {
+        return res.status(404).json({ message: "Truck not found" });
+      }
+      
+      if (truck.ownerId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this truck" });
+      }
+      
+      // Extend schema to coerce string dates to Date objects
+      const schema = insertTruckUnavailabilitySchema.extend({
+        blockedDate: z.coerce.date(),
+      });
+      
+      const validatedData = schema.parse({
+        ...req.body,
+        truckId,
+      });
+      
+      const unavailability = await storage.addUnavailability(validatedData);
+      res.status(201).json(unavailability);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error adding unavailability:", error);
+      res.status(500).json({ message: "Failed to add unavailability" });
+    }
+  });
+
+  app.delete('/api/unavailability/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const unavailabilityId = parseInt(req.params.id);
+      
+      if (isNaN(unavailabilityId)) {
+        return res.status(400).json({ message: "Invalid unavailability ID" });
+      }
+      
+      // Get the unavailability record to check truck ownership
+      const unavailability = await storage.getUnavailabilityById(unavailabilityId);
+      if (!unavailability) {
+        return res.status(404).json({ message: "Unavailability record not found" });
+      }
+      
+      // Get the truck to check ownership
+      const truck = await storage.getTruckById(unavailability.truckId);
+      if (!truck) {
+        return res.status(404).json({ message: "Truck not found" });
+      }
+      
+      if (truck.ownerId !== userId) {
+        return res.status(403).json({ message: "Not authorized to remove this unavailability" });
+      }
+      
+      await storage.removeUnavailability(unavailabilityId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error removing unavailability:", error);
+      res.status(500).json({ message: "Failed to remove unavailability" });
     }
   });
 

@@ -3,6 +3,7 @@ import {
   trucks,
   events,
   bookings,
+  truckUnavailability,
   type User,
   type UpsertUser,
   type Truck,
@@ -11,6 +12,8 @@ import {
   type InsertEvent,
   type Booking,
   type InsertBooking,
+  type TruckUnavailability,
+  type InsertTruckUnavailability,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -44,6 +47,12 @@ export interface IStorage {
   getBookingsByEventOrganizer(organizerId: string): Promise<Booking[]>;
   createBooking(booking: InsertBooking): Promise<Booking>;
   updateBookingStatus(id: number, status: string): Promise<Booking | undefined>;
+  
+  // Truck unavailability operations
+  getUnavailabilityById(id: number): Promise<TruckUnavailability | undefined>;
+  getUnavailabilityByTruck(truckId: number): Promise<TruckUnavailability[]>;
+  addUnavailability(data: InsertTruckUnavailability): Promise<TruckUnavailability>;
+  removeUnavailability(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -189,6 +198,37 @@ export class DatabaseStorage implements IStorage {
       .where(eq(bookings.id, id))
       .returning();
     return booking;
+  }
+
+  // Truck unavailability operations
+  async getUnavailabilityById(id: number): Promise<TruckUnavailability | undefined> {
+    const [unavailable] = await db
+      .select()
+      .from(truckUnavailability)
+      .where(eq(truckUnavailability.id, id));
+    return unavailable;
+  }
+
+  async getUnavailabilityByTruck(truckId: number): Promise<TruckUnavailability[]> {
+    return await db
+      .select()
+      .from(truckUnavailability)
+      .where(eq(truckUnavailability.truckId, truckId))
+      .orderBy(truckUnavailability.blockedDate);
+  }
+
+  async addUnavailability(data: InsertTruckUnavailability): Promise<TruckUnavailability> {
+    const [unavailable] = await db
+      .insert(truckUnavailability)
+      .values(data)
+      .returning();
+    return unavailable;
+  }
+
+  async removeUnavailability(id: number): Promise<void> {
+    await db
+      .delete(truckUnavailability)
+      .where(eq(truckUnavailability.id, id));
   }
 }
 
