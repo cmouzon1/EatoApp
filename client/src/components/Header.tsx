@@ -35,7 +35,7 @@ export function Header() {
             className="flex items-center gap-2 hover-elevate active-elevate-2 rounded-lg px-2 py-1"
           >
             <Truck className="h-7 w-7 text-primary" />
-            <span className="text-xl font-bold font-heading">FoodTruck</span>
+            <span className="text-xl font-bold font-heading">Eato</span>
           </Link>
 
           {/* Desktop Navigation */}

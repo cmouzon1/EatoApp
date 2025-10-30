@@ -94,7 +94,7 @@ export default function Landing() {
       <section className="py-20 px-4">
         <div className="container mx-auto max-w-6xl">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 font-heading">
-            Why Choose FoodTruck?
+            Why Choose Eato?
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {benefits.map((benefit) => (

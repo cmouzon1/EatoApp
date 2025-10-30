@@ -1,4 +1,4 @@
-# FoodTruck Marketplace Platform - Design Guidelines
+# Eato - Food Truck Marketplace Platform - Design Guidelines
 
 ## Design Approach
 
