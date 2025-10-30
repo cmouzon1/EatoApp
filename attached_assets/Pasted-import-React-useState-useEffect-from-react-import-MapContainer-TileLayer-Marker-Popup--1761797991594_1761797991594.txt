@@ -1,0 +1,121 @@
+import React, { useState, useEffect } from 'react'
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+import { api } from './api.js'
+
+const markerIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+})
+
+function Nav({ current, set }) {
+  const tabs = ['Map', 'Trucks', 'Events', 'Create']
+  return <nav>{tabs.map(t => (
+    <a key={t} href="#" className={current===t?'active':''}
+       onClick={(e)=>{e.preventDefault(); set(t)}}>{t}</a>
+  ))}</nav>
+}
+
+function MapView() {
+  const [trucks, setTrucks] = useState([])
+  useEffect(() => { api('/api/trucks').then(setTrucks) }, [])
+  const center = [40.9584, -75.9746]
+  return (
+    <div style={{height:'70vh'}}>
+      <MapContainer center={center} zoom={12} style={{height:'100%'}}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                   attribution="&copy; OpenStreetMap contributors" />
+        {trucks.map(t => (t.lat && t.lng) ? (
+          <Marker key={t.id} position={[t.lat, t.lng]} icon={markerIcon}>
+            <Popup><b>{t.name}</b><br/>{t.cuisine || ''}<br/>{t.hours || ''}</Popup>
+          </Marker>
+        ) : null)}
+      </MapContainer>
+    </div>
+  )
+}
+
+function TrucksView() {
+  const [trucks, setTrucks] = useState([])
+  useEffect(() => { api('/api/trucks').then(setTrucks) }, [])
+  return (<div><h2>Food Trucks</h2>
+    <ul>{trucks.map(t => (
+      <li key={t.id}><b>{t.name}</b> — {t.cuisine || '—'} | {t.hours || 'hours N/A'}</li>
+    ))}</ul></div>)
+}
+
+function EventsView() {
+  const [events, setEvents] = useState([])
+  useEffect(() => { api('/api/events').then(setEvents) }, [])
+  return (<div><h2>Events</h2>
+    <ul>{events.map(e => (
+      <li key={e.id}><b>{e.title}</b> — {e.date || 'TBD'} @ {e.location || 'TBD'} (need {e.trucks_needed || 0} trucks)</li>
+    ))}</ul></div>)
+}
+
+function CreateView() {
+  const [mode, setMode] = useState('truck')
+  const [form, setForm] = useState({})
+  const onChange = e => setForm(p => ({...p, [e.target.name]: e.target.value}))
+  const onSubmit = async e => {
+    e.preventDefault()
+    const url = mode === 'truck' ? '/api/trucks' : '/api/events'
+    const body = {...form}
+    if (mode === 'truck') {
+      body.lat = form.lat ? parseFloat(form.lat) : null
+      body.lng = form.lng ? parseFloat(form.lng) : null
+    }
+    const res = await api(url, { method:'POST', body })
+    alert(`${mode} created with id ${res.id}`)
+    setForm({})
+  }
+  return (
+    <div>
+      <h2>Create {mode === 'truck' ? 'Truck' : 'Event'}</h2>
+      <div style={{marginBottom:12}}>
+        <button onClick={()=>setMode('truck')}>Truck</button>
+        <button onClick={()=>setMode('event')} style={{marginLeft:8}}>Event</button>
+      </div>
+      <form onSubmit={onSubmit} style={{display:'grid', gap:8, maxWidth:480}}>
+        {mode==='truck' ? (<>
+          <input name="name" placeholder="Truck name" value={form.name||''} onChange={onChange} required />
+          <input name="cuisine" placeholder="Cuisine (e.g., Tacos)" value={form.cuisine||''} onChange={onChange} />
+          <textarea name="description" placeholder="Short description" value={form.description||''} onChange={onChange} />
+          <input name="lat" placeholder="Latitude" value={form.lat||''} onChange={onChange} />
+          <input name="lng" placeholder="Longitude" value={form.lng||''} onChange={onChange} />
+          <input name="hours" placeholder="Hours (e.g., M-F 11-3)" value={form.hours||''} onChange={onChange} />
+          <button type="submit">Create Truck</button>
+        </>) : (<>
+          <input name="title" placeholder="Event title" value={form.title||''} onChange={onChange} required />
+          <input name="date" placeholder="Date (YYYY-MM-DD)" value={form.date||''} onChange={onChange} />
+          <input name="location" placeholder="Location" value={form.location||''} onChange={onChange} />
+          <input name="expected_headcount" placeholder="Expected headcount" value={form.expected_headcount||''} onChange={onChange} />
+          <input name="cuisines_needed" placeholder="Cuisines needed (comma-separated)" value={form.cuisines_needed||''} onChange={onChange} />
+          <input name="trucks_needed" placeholder="# of trucks needed" value={form.trucks_needed||''} onChange={onChange} />
+          <textarea name="notes" placeholder="Notes" value={form.notes||''} onChange={onChange} />
+          <button type="submit">Create Event</button>
+        </>)}
+      </form>
+    </div>
+  )
+}
+
+export default function App() {
+  const [tab, setTab] = useState('Map')
+  return (
+    <div>
+      <header>
+        <div className="brand">FoodTruck</div>
+        <Nav current={tab} set={setTab} />
+      </header>
+      <main>
+        {tab === 'Map' && <MapView />}
+        {tab === 'Trucks' && <TrucksView />}
+        {tab === 'Events' && <EventsView />}
+        {tab === 'Create' && <CreateView />}
+      </main>
+    </div>
+  )
+}
