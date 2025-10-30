@@ -4,7 +4,9 @@ import { Truck as TruckType } from "@shared/schema";
 import { TruckCard } from "@/components/TruckCard";
 import { SearchBar } from "@/components/SearchBar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Truck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { InteractiveMap } from "@/components/InteractiveMap";
+import { Truck, Map, Grid3X3 } from "lucide-react";
 
 const cuisineFilters = [
   "Mexican",
@@ -20,6 +22,7 @@ const cuisineFilters = [
 export default function BrowseTrucks() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
 
   const { data: trucks, isLoading } = useQuery<TruckType[]>({
     queryKey: ["/api/trucks", searchQuery, selectedCuisines],
@@ -53,14 +56,52 @@ export default function BrowseTrucks() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center gap-3 mb-8">
-          <Truck className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl md:text-4xl font-bold font-heading">
-            Browse Food Trucks
-          </h1>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-3">
+            <Truck className="h-8 w-8 text-primary" />
+            <h1 className="text-3xl md:text-4xl font-bold font-heading">
+              Browse Food Trucks
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={viewMode === "grid" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("grid")}
+              data-testid="button-grid-view"
+            >
+              <Grid3X3 className="h-4 w-4 mr-2" />
+              Grid
+            </Button>
+            <Button
+              variant={viewMode === "map" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("map")}
+              data-testid="button-map-view"
+            >
+              <Map className="h-4 w-4 mr-2" />
+              Map
+            </Button>
+          </div>
         </div>
 
-        {isLoading ? (
+        {viewMode === "map" ? (
+          isLoading ? (
+            <Skeleton className="h-[600px] w-full rounded-lg" />
+          ) : filteredTrucks && filteredTrucks.length > 0 ? (
+            <InteractiveMap trucks={filteredTrucks} />
+          ) : (
+            <div className="text-center py-20">
+              <Truck className="h-20 w-20 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-xl font-semibold mb-2">No Trucks Found</h3>
+              <p className="text-muted-foreground">
+                {searchQuery || selectedCuisines.length > 0
+                  ? "Try adjusting your search or filters"
+                  : "No food trucks available at the moment"}
+              </p>
+            </div>
+          )
+        ) : isLoading ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {[...Array(8)].map((_, i) => (
               <div key={i} className="space-y-4">
