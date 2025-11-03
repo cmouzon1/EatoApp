@@ -581,6 +581,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Confirm payment status after Stripe redirect (for development/testing)
+  app.post('/api/confirm-payment', isAuthenticated, async (req: any, res) => {
+    try {
+      const { paymentIntentId } = req.body;
+      
+      if (!paymentIntentId) {
+        return res.status(400).json({ message: "Payment Intent ID is required" });
+      }
+
+      // Retrieve payment intent from Stripe
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      
+      if (paymentIntent.status === 'succeeded') {
+        const bookingId = paymentIntent.metadata?.bookingId;
+        
+        if (bookingId) {
+          await storage.updateBookingPayment(parseInt(bookingId), {
+            paymentStatus: "paid",
+          });
+          console.log(`Payment confirmed for booking #${bookingId}`);
+          res.json({ success: true, bookingId });
+        } else {
+          res.status(400).json({ message: "Booking ID not found in payment metadata" });
+        }
+      } else {
+        res.status(400).json({ message: `Payment status is ${paymentIntent.status}, not succeeded` });
+      }
+    } catch (error: any) {
+      console.error("Error confirming payment:", error);
+      res.status(500).json({ message: "Error confirming payment: " + error.message });
+    }
+  });
+
   // Stripe webhook to handle payment confirmations
   app.post('/api/stripe-webhook', async (req, res) => {
     const sig = req.headers['stripe-signature'] as string;
