@@ -47,6 +47,7 @@ export interface IStorage {
   getBookingsByEventOrganizer(organizerId: string): Promise<Booking[]>;
   createBooking(booking: InsertBooking): Promise<Booking>;
   updateBookingStatus(id: number, status: string): Promise<Booking | undefined>;
+  updateBookingPayment(id: number, data: Partial<Booking>): Promise<Booking | undefined>;
   
   // Truck unavailability operations
   getUnavailabilityById(id: number): Promise<TruckUnavailability | undefined>;
@@ -195,6 +196,15 @@ export class DatabaseStorage implements IStorage {
     const [booking] = await db
       .update(bookings)
       .set({ status: status as any, updatedAt: new Date() })
+      .where(eq(bookings.id, id))
+      .returning();
+    return booking;
+  }
+
+  async updateBookingPayment(id: number, data: Partial<Booking>): Promise<Booking | undefined> {
+    const [booking] = await db
+      .update(bookings)
+      .set({ ...data, updatedAt: new Date() })
       .where(eq(bookings.id, id))
       .returning();
     return booking;

@@ -129,6 +129,22 @@ Preferred communication style: Simple, everyday language.
 - HTML email templates with branded styling
 - Non-blocking email sending (errors logged but don't fail requests)
 
+**Payment Service:**
+- Stripe API for payment processing
+- Blueprint integration: `blueprint:javascript_stripe`
+- API keys stored in `STRIPE_SECRET_KEY` and `VITE_STRIPE_PUBLIC_KEY` environment variables
+- Payment flow for booking deposits:
+  - Event organizer can pay deposit when booking is accepted
+  - Deposit amount calculated as 25% of proposed price or $100 default
+  - Stripe Checkout handles secure payment processing
+  - Payment confirmation via webhooks
+- Payment tracking in bookings table:
+  - `paymentStatus`: unpaid, pending, paid, refunded
+  - `paymentIntentId`: Stripe payment intent identifier
+  - `depositAmount`: Deposit amount in cents
+- Payment pages: `/payment-checkout` and `/payment-success`
+- Non-production webhook handling (signature verification disabled for development)
+
 ### Key NPM Packages
 
 **Frontend:**

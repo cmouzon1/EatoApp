@@ -128,6 +128,9 @@ export const bookings = pgTable("bookings", {
   message: text("message"),
   proposedPrice: text("proposed_price"),
   organizerNotes: text("organizer_notes"),
+  paymentStatus: varchar("payment_status", { enum: ["unpaid", "pending", "paid", "refunded"] }).default("unpaid"),
+  paymentIntentId: varchar("payment_intent_id"),
+  depositAmount: integer("deposit_amount"), // Amount in cents
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

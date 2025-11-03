@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Event as EventType, Booking as BookingType, Truck as TruckType } from "@shared/schema";
@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, Plus, Truck, CheckCircle, X, Check } from "lucide-react";
+import { Calendar, Plus, Truck, CheckCircle, X, Check, CreditCard } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function OrganizerDashboard() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -211,34 +212,55 @@ export default function OrganizerDashboard() {
                         )}
                       </div>
 
-                      {booking.status === "pending" && (
-                        <div className="flex gap-2">
-                          <Button
-                            variant="default"
+                      <div className="flex flex-wrap gap-2">
+                        {booking.status === "pending" && (
+                          <>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => updateStatusMutation.mutate({ bookingId: booking.id, status: "accepted" })}
+                              disabled={updateStatusMutation.isPending}
+                              data-testid={`button-accept-${booking.id}`}
+                            >
+                              <Check className="mr-1.5 h-4 w-4" />
+                              Accept
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => updateStatusMutation.mutate({ bookingId: booking.id, status: "declined" })}
+                              disabled={updateStatusMutation.isPending}
+                              data-testid={`button-decline-${booking.id}`}
+                            >
+                              <X className="mr-1.5 h-4 w-4" />
+                              Decline
+                            </Button>
+                          </>
+                        )}
+                        
+                        {booking.status === "accepted" && booking.paymentStatus !== "paid" && (
+                          <Button 
+                            variant="default" 
                             size="sm"
-                            onClick={() => updateStatusMutation.mutate({ bookingId: booking.id, status: "accepted" })}
-                            disabled={updateStatusMutation.isPending}
-                            data-testid={`button-accept-${booking.id}`}
+                            onClick={() => setLocation(`/payment-checkout?bookingId=${booking.id}`)}
+                            data-testid={`button-pay-deposit-${booking.id}`}
                           >
-                            <Check className="mr-1.5 h-4 w-4" />
-                            Accept
+                            <CreditCard className="mr-1.5 h-4 w-4" />
+                            Pay Deposit
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => updateStatusMutation.mutate({ bookingId: booking.id, status: "declined" })}
-                            disabled={updateStatusMutation.isPending}
-                            data-testid={`button-decline-${booking.id}`}
-                          >
-                            <X className="mr-1.5 h-4 w-4" />
-                            Decline
-                          </Button>
-                        </div>
-                      )}
+                        )}
+                        
+                        {booking.paymentStatus === "paid" && (
+                          <Badge className="bg-green-500 text-white border-0">
+                            <CheckCircle className="mr-1.5 h-3 w-3" />
+                            Deposit Paid
+                          </Badge>
+                        )}
 
-                      <Button variant="outline" asChild>
-                        <Link href={`/trucks/${booking.truck.id}`}>View Truck</Link>
-                      </Button>
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/trucks/${booking.truck.id}`}>View Truck</Link>
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

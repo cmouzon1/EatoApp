@@ -13,6 +13,8 @@ import EventDetail from "@/pages/EventDetail";
 import TruckDashboard from "@/pages/TruckDashboard";
 import OrganizerDashboard from "@/pages/OrganizerDashboard";
 import Profile from "@/pages/Profile";
+import PaymentCheckout from "@/pages/PaymentCheckout";
+import PaymentSuccess from "@/pages/PaymentSuccess";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -35,6 +37,8 @@ function Router() {
       <Route path="/dashboard/truck" component={TruckDashboard} />
       <Route path="/dashboard/organizer" component={OrganizerDashboard} />
       <Route path="/profile" component={Profile} />
+      <Route path="/payment-checkout" component={PaymentCheckout} />
+      <Route path="/payment-success" component={PaymentSuccess} />
       
       <Route component={NotFound} />
     </Switch>
