@@ -1,0 +1,101 @@
+Modify client to add a subscribe flow without a full auth provider.
+
+1) Create a new file /client/src/Subscribe.jsx with this:
+
+import React, { useState } from 'react'
+import { api } from './api.js'
+
+export default function Subscribe({ onDone }) {
+  const [email, setEmail] = useState(localStorage.getItem('email') || '')
+  const [tier, setTier] = useState('basic')
+  const [loading, setLoading] = useState(false)
+
+  async function start() {
+    if (!email) return alert('Enter email')
+    localStorage.setItem('email', email)
+    setLoading(true)
+    try {
+      const res = await api('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        body: { email, tier }
+      })
+      window.location.href = res.url
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{display:'grid', gap:8, maxWidth:400}}>
+      <h3>Subscribe</h3>
+      <input placeholder="Your email" value={email} onChange={e=>setEmail(e.target.value)} />
+      <label>
+        Plan:
+        <select value={tier} onChange={e=>setTier(e.target.value)}>
+          <option value="basic">Basic (Trucks/Organizers)</option>
+          <option value="pro">Pro (Advanced features)</option>
+        </select>
+      </label>
+      <button disabled={loading} onClick={start}>{loading ? 'Redirecting…' : 'Proceed to Checkout'}</button>
+      <small>You’ll be redirected to Stripe to complete the subscription.</small>
+    </div>
+  )
+}
+
+2) Modify /client/src/App.jsx:
+- At the top, add:
+import Subscribe from './Subscribe.jsx'
+
+- Inside the component, add a simple subscription check:
+
+function useSubStatus() {
+  const [status, setStatus] = React.useState('checking')
+  const email = localStorage.getItem('email') || ''
+  React.useEffect(() => {
+    if (!email) { setStatus('none'); return }
+    fetch(`/api/subscription?email=${encodeURIComponent(email)}`)
+      .then(r=>r.json())
+      .then(d=>setStatus(d.status || 'none'))
+      .catch(()=>setStatus('none'))
+  }, [email])
+  return { status, email }
+}
+
+- Replace the export default function App() body with gating:
+export default function App() {
+  const [tab, setTab] = useState('Map')
+  const { status, email } = useSubStatus()
+
+  const gated = (status === 'active')
+
+  return (
+    <div>
+      <header>
+        <div className="brand">FoodTruck</div>
+        <Nav current={tab} set={setTab} />
+        <div style={{marginLeft:'auto'}}>
+          {email ? <small>Signed: {email}</small> : null}
+          {!gated && <a href="#" onClick={(e)=>{e.preventDefault(); setTab('Subscribe')}} style={{marginLeft:12}}>Subscribe</a>}
+        </div>
+      </header>
+      <main>
+        {tab === 'Map' && <MapView />}
+        {tab === 'Trucks' && <TrucksView />}
+        {tab === 'Events' && <EventsView />}
+        {tab === 'Create' && (gated ? <CreateView /> : (
+          <div><p>This feature requires an active subscription.</p><p><a href="#" onClick={(e)=>{e.preventDefault(); setTab('Subscribe')}}>Subscribe now</a></p></div>
+        ))}
+        {tab === 'Subscribe' && <Subscribe />}
+      </main>
+    </div>
+  )
+}
+
+3) Keep everything else the same.
+
+4) In the shell:
+- npm run dev
+- In another terminal, run Stripe webhook forwarding if available (optional in Replit): 
+  stripe listen --forward-to localhost:3000/api/stripe/webhook
