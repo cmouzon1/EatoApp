@@ -200,6 +200,11 @@ Required environment variables:
 - `REPL_ID`: Replit application identifier (for OIDC)
 - `ISSUER_URL`: OIDC issuer URL (defaults to Replit)
 - `NODE_ENV`: Environment mode (development/production)
+- `STRIPE_SECRET_KEY`: Stripe API secret key for payment processing
+- `VITE_STRIPE_PUBLIC_KEY`: Stripe publishable key (accessible in frontend)
+- `STRIPE_PRICE_BASIC`: Stripe Price ID for Basic tier subscription ($9/month)
+- `STRIPE_PRICE_PRO`: Stripe Price ID for Pro tier subscription ($29/month)
+- `RESEND_API_KEY`: Resend API key for sending transactional emails
 
 ### Asset Management
 
