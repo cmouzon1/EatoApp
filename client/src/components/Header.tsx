@@ -1,6 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -9,13 +11,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Menu, Truck, Calendar, User, LogOut } from "lucide-react";
+import { Menu, Truck, Calendar, User, LogOut, Crown } from "lucide-react";
 import { useState } from "react";
+
+type SubscriptionStatus = {
+  status: string;
+  tier: string;
+  currentPeriodEnd?: string;
+};
 
 export function Header() {
   const { user, isAuthenticated, isTruckOwner, isEventOrganizer } = useAuth();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const { data: subscriptionStatus } = useQuery<SubscriptionStatus>({
+    queryKey: ['/api/subscription/status'],
+    enabled: isAuthenticated,
+  });
 
   const navLinks = [
     { href: "/trucks", label: "Browse Trucks", icon: Truck },
@@ -82,13 +95,18 @@ export function Header() {
                         {user.firstName?.[0] || user.email?.[0] || "U"}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex flex-col">
+                    <div className="flex flex-col flex-1">
                       <p className="text-sm font-medium" data-testid="text-user-name">
                         {user.firstName || user.email?.split("@")[0] || "User"}
                       </p>
                       <p className="text-xs text-muted-foreground" data-testid="text-user-email">
                         {user.email}
                       </p>
+                      {subscriptionStatus && subscriptionStatus.status === 'active' && (
+                        <Badge variant="outline" className="mt-1 text-xs w-fit" data-testid="badge-subscription-tier">
+                          {subscriptionStatus.tier === 'pro' ? 'Pro' : 'Basic'}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <DropdownMenuSeparator />
@@ -112,6 +130,12 @@ export function Header() {
                     <DropdownMenuItem data-testid="link-profile">
                       <User className="mr-2 h-4 w-4" />
                       Profile
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/subscription">
+                    <DropdownMenuItem data-testid="link-subscription">
+                      <Crown className="mr-2 h-4 w-4" />
+                      Subscription
                     </DropdownMenuItem>
                   </Link>
                   <DropdownMenuSeparator />

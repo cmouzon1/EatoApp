@@ -4,6 +4,7 @@ import {
   events,
   bookings,
   truckUnavailability,
+  subscriptions,
   type User,
   type UpsertUser,
   type Truck,
@@ -14,6 +15,8 @@ import {
   type InsertBooking,
   type TruckUnavailability,
   type InsertTruckUnavailability,
+  type Subscription,
+  type InsertSubscription,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -54,6 +57,11 @@ export interface IStorage {
   getUnavailabilityByTruck(truckId: number): Promise<TruckUnavailability[]>;
   addUnavailability(data: InsertTruckUnavailability): Promise<TruckUnavailability>;
   removeUnavailability(id: number): Promise<void>;
+  
+  // Subscription operations
+  getSubscriptionByUserId(userId: string): Promise<Subscription | undefined>;
+  upsertSubscription(data: InsertSubscription): Promise<Subscription>;
+  updateSubscription(userId: string, data: Partial<Subscription>): Promise<Subscription | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -239,6 +247,39 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(truckUnavailability)
       .where(eq(truckUnavailability.id, id));
+  }
+
+  // Subscription operations
+  async getSubscriptionByUserId(userId: string): Promise<Subscription | undefined> {
+    const [subscription] = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, userId));
+    return subscription;
+  }
+
+  async upsertSubscription(data: InsertSubscription): Promise<Subscription> {
+    const [subscription] = await db
+      .insert(subscriptions)
+      .values(data)
+      .onConflictDoUpdate({
+        target: subscriptions.userId,
+        set: {
+          ...data,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return subscription;
+  }
+
+  async updateSubscription(userId: string, data: Partial<Subscription>): Promise<Subscription | undefined> {
+    const [subscription] = await db
+      .update(subscriptions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(subscriptions.userId, userId))
+      .returning();
+    return subscription;
   }
 }
 

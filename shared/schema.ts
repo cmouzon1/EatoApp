@@ -39,11 +39,34 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
+// Subscriptions table for tiered user plans
+export const subscriptions = pgTable("subscriptions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().unique().references(() => users.id),
+  tier: varchar("tier", { enum: ["basic", "pro"] }).notNull().default("basic"),
+  status: varchar("status", { 
+    enum: ["active", "canceled", "past_due", "incomplete", "trialing", "none"] 
+  }).notNull().default("none"),
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [subscriptions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const usersRelations = relations(users, ({ many, one }) => ({
   trucks: many(trucks),
   events: many(events),
   bookingsAsTruck: many(bookings, { relationName: "truckOwner" }),
   bookingsAsOrganizer: many(bookings, { relationName: "eventOrganizer" }),
+  subscription: one(subscriptions),
 }));
 
 // Trucks table
@@ -189,3 +212,11 @@ export type InsertBooking = z.infer<typeof insertBookingSchema>;
 
 export type TruckUnavailability = typeof truckUnavailability.$inferSelect;
 export type InsertTruckUnavailability = z.infer<typeof insertTruckUnavailabilitySchema>;
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type Subscription = typeof subscriptions.$inferSelect;
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;

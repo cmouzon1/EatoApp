@@ -57,6 +57,7 @@ Preferred communication style: Simple, everyday language.
 - **Events**: Event listings with requirements and details
 - **Bookings**: Connection between trucks and events with status tracking
 - **Truck Unavailability**: Calendar system for truck owners to block specific dates when unavailable for bookings
+- **Subscriptions**: Tiered user subscriptions (basic/pro) with Stripe recurring billing
 
 **Key Backend Patterns:**
 - Storage abstraction layer (`DatabaseStorage` implementing `IStorage`)
@@ -69,7 +70,7 @@ Preferred communication style: Simple, everyday language.
 **Database:**
 - PostgreSQL (via Neon serverless)
 - Schema managed through Drizzle ORM with migrations in `migrations/` directory
-- Tables: users, trucks, events, bookings, truck_unavailability, sessions
+- Tables: users, trucks, events, bookings, truck_unavailability, subscriptions, sessions
 
 **Schema Highlights:**
 - UUID-based user IDs for compatibility with OIDC providers
@@ -144,6 +145,27 @@ Preferred communication style: Simple, everyday language.
   - `depositAmount`: Deposit amount in cents
 - Payment pages: `/payment-checkout` and `/payment-success`
 - Non-production webhook handling (signature verification disabled for development)
+
+**Subscription Service:**
+- Stripe API for recurring subscription billing
+- Blueprint integration: `blueprint:javascript_stripe`
+- API keys stored in `STRIPE_SECRET_KEY`, `STRIPE_PRICE_BASIC`, and `STRIPE_PRICE_PRO` environment variables
+- Tiered subscription plans:
+  - **Basic**: $9/month - Standard features including truck listing, booking requests, calendar management
+  - **Pro**: $29/month - Premium features including priority placement, advanced analytics, featured badge
+- Subscription flow:
+  - User selects tier on `/subscription` page
+  - Stripe Checkout creates recurring subscription
+  - Webhook confirms subscription activation
+  - Subscription status tracked in subscriptions table
+- Subscription tracking in subscriptions table:
+  - `tier`: basic, pro
+  - `status`: active, canceled, past_due, incomplete, trialing, none
+  - `stripeCustomerId`: Stripe customer identifier
+  - `stripeSubscriptionId`: Stripe subscription identifier
+  - `currentPeriodEnd`: End date of current billing period
+- Subscription pages: `/subscription` and `/subscription-success`
+- Webhook endpoint: `/api/subscription/webhook` handles subscription lifecycle events
 
 ### Key NPM Packages
 

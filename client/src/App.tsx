@@ -15,6 +15,8 @@ import OrganizerDashboard from "@/pages/OrganizerDashboard";
 import Profile from "@/pages/Profile";
 import PaymentCheckout from "@/pages/PaymentCheckout";
 import PaymentSuccess from "@/pages/PaymentSuccess";
+import Subscription from "@/pages/Subscription";
+import SubscriptionSuccess from "@/pages/SubscriptionSuccess";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -39,6 +41,8 @@ function Router() {
       <Route path="/profile" component={Profile} />
       <Route path="/payment-checkout" component={PaymentCheckout} />
       <Route path="/payment-success" component={PaymentSuccess} />
+      <Route path="/subscription" component={Subscription} />
+      <Route path="/subscription-success" component={SubscriptionSuccess} />
       
       <Route component={NotFound} />
     </Switch>
