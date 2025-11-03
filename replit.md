@@ -118,6 +118,17 @@ Preferred communication style: Simple, everyday language.
 - Connection via `DATABASE_URL` environment variable
 - WebSocket support for serverless database connections
 
+**Email Service:**
+- Resend API for transactional email notifications
+- Direct API integration (not using Replit connector to allow more flexibility)
+- API key stored in `RESEND_API_KEY` environment variable
+- Automated notifications for booking lifecycle events:
+  - New booking request created (notifies truck owner + event organizer)
+  - Booking accepted by truck owner (notifies event organizer)
+  - Booking declined by truck owner (notifies event organizer)
+- HTML email templates with branded styling
+- Non-blocking email sending (errors logged but don't fail requests)
+
 ### Key NPM Packages
 
 **Frontend:**

@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertTruckSchema, insertEventSchema, insertBookingSchema, insertTruckUnavailabilitySchema } from "@shared/schema";
 import { z } from "zod";
+import { sendNewBookingNotification, sendBookingAcceptedNotification, sendBookingDeclinedNotification } from "./email";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -332,6 +333,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = insertBookingSchema.parse(req.body);
       const booking = await storage.createBooking(validatedData);
+      
+      // Fetch related data for email notifications
+      const [truck, event] = await Promise.all([
+        storage.getTruckById(booking.truckId),
+        storage.getEventById(booking.eventId),
+      ]);
+      
+      if (truck && event) {
+        const [truckOwner, eventOrganizer] = await Promise.all([
+          storage.getUser(truck.ownerId),
+          storage.getUser(event.organizerId),
+        ]);
+        
+        // Send email notifications (don't block response on email send)
+        if (truckOwner && eventOrganizer) {
+          sendNewBookingNotification({
+            booking,
+            truck,
+            event,
+            truckOwner,
+            eventOrganizer,
+          }).catch((error) => {
+            console.error('Failed to send new booking notification:', error);
+          });
+        }
+      }
+      
       res.status(201).json(booking);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -400,6 +428,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedBooking = await storage.updateBookingStatus(bookingId, status);
       if (!updatedBooking) {
         return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Send email notifications for status changes
+      if (status === 'accepted' || status === 'declined') {
+        const [truck, event] = await Promise.all([
+          storage.getTruckById(updatedBooking.truckId),
+          storage.getEventById(updatedBooking.eventId),
+        ]);
+        
+        if (truck && event) {
+          const [truckOwner, eventOrganizer] = await Promise.all([
+            storage.getUser(truck.ownerId),
+            storage.getUser(event.organizerId),
+          ]);
+          
+          if (truckOwner && eventOrganizer) {
+            const emailData = {
+              booking: updatedBooking,
+              truck,
+              event,
+              truckOwner,
+              eventOrganizer,
+            };
+            
+            // Send appropriate notification based on status
+            const emailPromise = status === 'accepted'
+              ? sendBookingAcceptedNotification(emailData)
+              : sendBookingDeclinedNotification(emailData);
+            
+            emailPromise.catch((error) => {
+              console.error(`Failed to send booking ${status} notification:`, error);
+            });
+          }
+        }
       }
       
       res.json(updatedBooking);
