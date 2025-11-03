@@ -1,0 +1,132 @@
+Create a new file /server/stripe.js with exactly this content:
+
+import Stripe from 'stripe';
+import db from './db.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2023-10-16'
+});
+
+export async function createCheckoutSession({ email, tier, successUrl, cancelUrl }) {
+  const priceId = tier === 'pro' ? process.env.STRIPE_PRICE_PRO : process.env.STRIPE_PRICE_BASIC;
+
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    customer_email: email,
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: { tier }
+  });
+
+  return session;
+}
+
+export async function handleWebhook(rawBody, signature) {
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(rawBody, signature, endpointSecret);
+  } catch (err) {
+    return { ok: false, status: 400, message: `Webhook Error: ${err.message}` };
+  }
+
+  const type = event.type;
+
+  // Helper to upsert subscription row
+  function upsert(email, fields) {
+    const get = db.prepare('SELECT * FROM subscriptions WHERE email = ?').get(email);
+    if (get) {
+      const set = db.prepare(`UPDATE subscriptions
+        SET tier=@tier, status=@status, current_period_end=@current_period_end,
+            stripe_customer_id=@stripe_customer_id, updated_at=datetime('now')
+        WHERE email=@email`);
+      set.run({ email, ...fields });
+    } else {
+      const ins = db.prepare(`INSERT INTO subscriptions (email, tier, status, current_period_end, stripe_customer_id)
+        VALUES (@email, @tier, @status, @current_period_end, @stripe_customer_id)`);
+      ins.run({ email, ...fields });
+    }
+  }
+
+  if (type === 'checkout.session.completed') {
+    const s = event.data.object;
+    const email = s.customer_details?.email;
+    const tier = s.metadata?.tier || 'basic';
+    const custId = s.customer;
+    if (email) {
+      upsert(email, { tier, status: 'active', current_period_end: null, stripe_customer_id: custId });
+    }
+  }
+
+  if (type === 'customer.subscription.updated' || type === 'customer.subscription.created') {
+    const sub = event.data.object;
+    const custId = sub.customer;
+    const status = sub.status;
+    const currentPeriodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+
+    // look up email by customer id from the latest invoice
+    const invoices = await stripe.invoices.list({ customer: custId, limit: 1 });
+    const email = invoices?.data?.[0]?.customer_email || null;
+
+    // derive tier from price
+    const priceId = sub.items?.data?.[0]?.price?.id || '';
+    const tier = priceId === process.env.STRIPE_PRICE_PRO ? 'pro' : 'basic';
+
+    if (email) {
+      upsert(email, { tier, status, current_period_end: currentPeriodEnd, stripe_customer_id: custId });
+    }
+  }
+
+  if (type === 'customer.subscription.deleted') {
+    const sub = event.data.object;
+    const custId = sub.customer;
+    // best-effort: mark any record with this customer as canceled
+    const stmt = db.prepare('UPDATE subscriptions SET status = ?, updated_at = datetime("now") WHERE stripe_customer_id = ?');
+    stmt.run('canceled', custId);
+  }
+
+  return { ok: true, status: 200 };
+}
+
+Then modify /server/index.js as follows:
+- Add at the top:
+import crypto from 'crypto';
+import { createCheckoutSession, handleWebhook } from './stripe.js';
+
+- Before app.use(express.json()), add a raw-body route for the webhook:
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const raw = req.body; // Buffer
+  const result = await handleWebhook(raw, sig);
+  return res.status(result.status).send(result.ok ? 'ok' : result.message);
+});
+
+- Immediately after the webhook route, keep the normal JSON parser:
+app.use(express.json());
+
+- Add these routes:
+app.post('/api/stripe/create-checkout-session', async (req, res) => {
+  const { email, tier = 'basic' } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'email required' });
+
+  const successUrl = `${process.env.APP_URL}/?sub=success`;
+  const cancelUrl = `${process.env.APP_URL}/?sub=cancel`;
+
+  try {
+    const session = await createCheckoutSession({ email, tier, successUrl, cancelUrl });
+    res.json({ id: session.id, url: session.url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/subscription', (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.json({ status: 'none' });
+  const row = db.prepare('SELECT * FROM subscriptions WHERE email = ?').get(email);
+  if (!row) return res.json({ status: 'none' });
+  res.json({ status: row.status, tier: row.tier, current_period_end: row.current_period_end });
+});
