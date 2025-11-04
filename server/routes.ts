@@ -44,7 +44,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastName: z.string().optional(),
         phoneNumber: z.string().optional(),
         bio: z.string().optional(),
-        userRole: z.enum(["truck_owner", "event_organizer"]).optional(),
+        userRole: z.enum(["truck_owner", "event_organizer", "user"]).optional(),
       });
       
       const validatedData = profileSchema.parse(req.body);
