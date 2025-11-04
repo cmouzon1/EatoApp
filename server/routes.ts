@@ -711,6 +711,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const priceKey = `${role}_${tier}`;
       const priceId = priceMap[priceKey];
 
+      console.log(`[DEBUG] Subscription request: role=${role}, tier=${tier}, priceKey=${priceKey}`);
+      console.log(`[DEBUG] Price ID from env: ${priceId}`);
+      console.log(`[DEBUG] All configured Price IDs:`, {
+        user_basic: process.env.STRIPE_PRICE_USER_BASIC,
+        user_pro: process.env.STRIPE_PRICE_USER_PRO,
+        truck_owner_basic: process.env.STRIPE_PRICE_TRUCK_BASIC,
+        truck_owner_pro: process.env.STRIPE_PRICE_TRUCK_PRO,
+        event_organizer_basic: process.env.STRIPE_PRICE_ORG_BASIC,
+        event_organizer_pro: process.env.STRIPE_PRICE_ORG_PRO,
+      });
+
       if (!priceId) {
         console.error(`Missing Stripe price ID for ${priceKey}`);
         return res.status(500).json({ error: `Subscription pricing not configured for ${role} ${tier} plan` });
