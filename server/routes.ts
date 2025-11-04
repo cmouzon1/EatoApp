@@ -703,8 +703,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: `Subscription pricing not configured for ${role} ${tier} plan` });
       }
 
-      const successUrl = `${process.env.REPLIT_DEPLOYMENT ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'http://localhost:5000'}/subscription-success?session_id={CHECKOUT_SESSION_ID}`;
-      const cancelUrl = `${process.env.REPLIT_DEPLOYMENT ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'http://localhost:5000'}/subscription`;
+      // Construct the base URL based on environment
+      const baseUrl = process.env.REPLIT_DEPLOYMENT 
+        ? `https://${process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DEV_DOMAIN 
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : 'http://localhost:5000';
+
+      const successUrl = `${baseUrl}/subscription-success?session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = `${baseUrl}/subscription`;
 
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
