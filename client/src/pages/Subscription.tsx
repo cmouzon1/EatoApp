@@ -54,16 +54,38 @@ export default function Subscription() {
 
   const createCheckoutMutation = useMutation({
     mutationFn: async (tier: string) => {
+      console.log("[Subscription] Creating checkout for tier:", tier);
       const response = await apiRequest("POST", "/api/subscription/create-checkout-session", { tier });
-      return response.json();
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("[Subscription] API error:", response.status, errorData);
+        throw new Error(errorData.error || `API request failed with status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("[Subscription] Checkout response:", data);
+      return data;
     },
     onSuccess: (data) => {
+      console.log("[Subscription] Success handler called with:", data);
       if (data.url) {
+        console.log("[Subscription] Redirecting to:", data.url);
         setIsRedirecting(true);
         window.location.href = data.url;
+      } else {
+        console.error("[Subscription] No URL in response");
+        toast({
+          title: "Error",
+          description: "No checkout URL received from server",
+          variant: "destructive",
+        });
+        setIsRedirecting(false);
       }
     },
     onError: (error: any) => {
+      console.error("[Subscription] Mutation error:", error);
+      setIsRedirecting(false);
       toast({
         title: "Error",
         description: error.message || "Failed to create checkout session",
