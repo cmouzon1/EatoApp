@@ -20,7 +20,7 @@ export default function Profile() {
   const [lastName, setLastName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [bio, setBio] = useState("");
-  const [userRole, setUserRole] = useState<"truck_owner" | "event_organizer">("truck_owner");
+  const [userRole, setUserRole] = useState<"truck_owner" | "event_organizer" | "user">("truck_owner");
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -170,6 +170,13 @@ export default function Profile() {
                     <Label htmlFor="event_organizer" className="font-normal cursor-pointer flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
                       Event Organizer
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-3 space-y-0">
+                    <RadioGroupItem value="user" id="user" data-testid="radio-user" />
+                    <Label htmlFor="user" className="font-normal cursor-pointer flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Foodie / App User
                     </Label>
                   </div>
                 </RadioGroup>

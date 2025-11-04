@@ -32,7 +32,7 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  userRole: varchar("user_role", { enum: ["truck_owner", "event_organizer"] }),
+  userRole: varchar("user_role", { enum: ["truck_owner", "event_organizer", "user"] }),
   phoneNumber: varchar("phone_number"),
   bio: text("bio"),
   createdAt: timestamp("created_at").defaultNow(),

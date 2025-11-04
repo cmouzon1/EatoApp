@@ -14,6 +14,22 @@ type SubscriptionStatus = {
   currentPeriodEnd?: string;
 };
 
+// Role-specific pricing
+const PRICING = {
+  truck_owner: {
+    basic: { price: "$49", description: "Starter tools for food trucks" },
+    pro: { price: "$149", description: "Advanced tools for fleets and growth" }
+  },
+  event_organizer: {
+    basic: { price: "$49", description: "Perfect for small recurring venues" },
+    pro: { price: "$99", description: "Unlimited events and premium features" }
+  },
+  user: {
+    basic: { price: "$4.99", description: "Enhanced discovery features" },
+    pro: { price: "$19.99", description: "Pro tools for power users" }
+  }
+};
+
 export default function Subscription() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -71,13 +87,24 @@ export default function Subscription() {
   const currentTier = subscriptionStatus?.tier || 'basic';
   const isActive = subscriptionStatus?.status === 'active';
 
+  // Get role-specific pricing
+  const userRole = user?.userRole || 'user';
+  const pricing = PRICING[userRole as keyof typeof PRICING] || PRICING.user;
+
+  // Get role display name
+  const roleDisplay = {
+    truck_owner: "Food Truck",
+    event_organizer: "Event Organizer",
+    user: "Foodie"
+  }[userRole] || "User";
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-bold">Choose Your Plan</h1>
           <p className="text-muted-foreground text-lg">
-            Select the perfect subscription tier for your food truck business
+            {roleDisplay} subscription plans tailored for your needs
           </p>
         </div>
 
@@ -99,9 +126,9 @@ export default function Subscription() {
                   <Badge variant="default">Current Plan</Badge>
                 )}
               </div>
-              <CardDescription>Perfect for getting started</CardDescription>
+              <CardDescription>{pricing.basic.description}</CardDescription>
               <div className="mt-4">
-                <span className="text-4xl font-bold">$9</span>
+                <span className="text-4xl font-bold">{pricing.basic.price}</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
             </CardHeader>
@@ -154,9 +181,9 @@ export default function Subscription() {
                   <Badge variant="default">Current Plan</Badge>
                 )}
               </div>
-              <CardDescription>For professional food truck operators</CardDescription>
+              <CardDescription>{pricing.pro.description}</CardDescription>
               <div className="mt-4">
-                <span className="text-4xl font-bold">$29</span>
+                <span className="text-4xl font-bold">{pricing.pro.price}</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
             </CardHeader>

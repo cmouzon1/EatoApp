@@ -680,13 +680,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Invalid tier' });
       }
 
-      const priceId = tier === 'pro' 
-        ? process.env.STRIPE_PRICE_PRO 
-        : process.env.STRIPE_PRICE_BASIC;
+      if (!user.userRole) {
+        return res.status(400).json({ error: 'User role not set. Please complete your profile first.' });
+      }
+
+      // Map role + tier to Stripe Price ID
+      const role = user.userRole;
+      const priceMap: Record<string, string | undefined> = {
+        'truck_owner_basic': process.env.STRIPE_PRICE_TRUCK_BASIC,
+        'truck_owner_pro': process.env.STRIPE_PRICE_TRUCK_PRO,
+        'event_organizer_basic': process.env.STRIPE_PRICE_ORG_BASIC,
+        'event_organizer_pro': process.env.STRIPE_PRICE_ORG_PRO,
+        'user_basic': process.env.STRIPE_PRICE_USER_BASIC,
+        'user_pro': process.env.STRIPE_PRICE_USER_PRO,
+      };
+
+      const priceKey = `${role}_${tier}`;
+      const priceId = priceMap[priceKey];
 
       if (!priceId) {
-        console.error(`Missing Stripe price ID for tier: ${tier}`);
-        return res.status(500).json({ error: 'Subscription pricing not configured' });
+        console.error(`Missing Stripe price ID for ${priceKey}`);
+        return res.status(500).json({ error: `Subscription pricing not configured for ${role} ${tier} plan` });
       }
 
       const successUrl = `${process.env.REPLIT_DEPLOYMENT ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'http://localhost:5000'}/subscription-success?session_id={CHECKOUT_SESSION_ID}`;
@@ -698,7 +712,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         line_items: [{ price: priceId, quantity: 1 }],
         success_url: successUrl,
         cancel_url: cancelUrl,
-        metadata: { tier, userId },
+        metadata: { tier, userId, role },
       });
 
       res.json({ id: session.id, url: session.url });

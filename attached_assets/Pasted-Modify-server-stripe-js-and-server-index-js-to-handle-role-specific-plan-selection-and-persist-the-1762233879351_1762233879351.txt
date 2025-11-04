@@ -1,0 +1,156 @@
+Modify /server/stripe.js and /server/index.js to handle role-specific plan selection and persist the role.
+
+1) Replace /server/stripe.js with:
+
+import Stripe from 'stripe';
+import db from './db.js';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+
+// Map roles+tier to Price ID
+function resolvePriceId(role, tier) {
+  const key = `${role}_${tier}`; // e.g., 'truck_basic', 'org_pro', 'user_pro'
+  const map = {
+    // Trucks
+    truck_basic: process.env.STRIPE_PRICE_TRUCK_BASIC,
+    truck_pro: process.env.STRIPE_PRICE_TRUCK_PRO,
+    // Organizers
+    org_basic: process.env.STRIPE_PRICE_ORG_BASIC,
+    org_pro: process.env.STRIPE_PRICE_ORG_PRO,
+    // Users
+    user_basic: process.env.STRIPE_PRICE_USER_BASIC,
+    user_pro: process.env.STRIPE_PRICE_USER_PRO
+  };
+  const id = map[key];
+  if (!id) throw new Error(`Missing Stripe Price ID for ${key}`);
+  return id;
+}
+
+export async function createCheckoutSession({ email, role, tier, successUrl, cancelUrl }) {
+  const priceId = resolvePriceId(role, tier);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    customer_email: email,
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: { role, tier }
+  });
+
+  return session;
+}
+
+export async function handleWebhook(rawBody, signature) {
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const stripeLocal = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+
+  let event;
+  try {
+    event = stripeLocal.webhooks.constructEvent(rawBody, signature, endpointSecret);
+  } catch (err) {
+    return { ok: false, status: 400, message: `Webhook Error: ${err.message}` };
+  }
+
+  const type = event.type;
+
+  function upsert({ email, role, tier, status, current_period_end, stripe_customer_id }) {
+    const get = db.prepare('SELECT * FROM subscriptions WHERE email = ?').get(email);
+    if (get) {
+      const set = db.prepare(`UPDATE subscriptions
+        SET role=@role, tier=@tier, status=@status, current_period_end=@current_period_end,
+            stripe_customer_id=@stripe_customer_id, updated_at=datetime('now')
+        WHERE email=@email`);
+      set.run({ email, role, tier, status, current_period_end, stripe_customer_id });
+    } else {
+      const ins = db.prepare(`INSERT INTO subscriptions (email, role, tier, status, current_period_end, stripe_customer_id)
+        VALUES (@email, @role, @tier, @status, @current_period_end, @stripe_customer_id)`);
+      ins.run({ email, role, tier, status, current_period_end, stripe_customer_id });
+    }
+  }
+
+  if (type === 'checkout.session.completed') {
+    const s = event.data.object;
+    const email = s.customer_details?.email;
+    const role = s.metadata?.role || 'user';
+    const tier = s.metadata?.tier || 'basic';
+    const custId = s.customer;
+    if (email) {
+      upsert({ email, role, tier, status: 'active', current_period_end: null, stripe_customer_id: custId });
+    }
+  }
+
+  if (type === 'customer.subscription.created' || type === 'customer.subscription.updated') {
+    const sub = event.data.object;
+    const custId = sub.customer;
+    const status = sub.status;
+    const currentPeriodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+
+    // Try to find email from latest invoice
+    const invoices = await stripeLocal.invoices.list({ customer: custId, limit: 1 });
+    const email = invoices?.data?.[0]?.customer_email || null;
+
+    // Derive role/tier from the Price ID
+    const priceId = sub.items?.data?.[0]?.price?.id || '';
+    let role = 'user';
+    let tier = 'basic';
+    if (priceId === process.env.STRIPE_PRICE_TRUCK_BASIC) { role='truck'; tier='basic'; }
+    if (priceId === process.env.STRIPE_PRICE_TRUCK_PRO)   { role='truck'; tier='pro'; }
+    if (priceId === process.env.STRIPE_PRICE_ORG_BASIC)   { role='org';   tier='basic'; }
+    if (priceId === process.env.STRIPE_PRICE_ORG_PRO)     { role='org';   tier='pro'; }
+    if (priceId === process.env.STRIPE_PRICE_USER_BASIC)  { role='user';  tier='basic'; }
+    if (priceId === process.env.STRIPE_PRICE_USER_PRO)    { role='user';  tier='pro'; }
+
+    if (email) {
+      upsert({ email, role, tier, status, current_period_end: currentPeriodEnd, stripe_customer_id: custId });
+    }
+  }
+
+  if (type === 'customer.subscription.deleted') {
+    const sub = event.data.object;
+    const custId = sub.customer;
+    const stmt = db.prepare('UPDATE subscriptions SET status = ?, updated_at = datetime("now") WHERE stripe_customer_id = ?');
+    stmt.run('canceled', custId);
+  }
+
+  return { ok: true, status: 200 };
+}
+
+2) In /server/index.js:
+- Ensure the webhook raw body comes BEFORE express.json():
+import { createCheckoutSession, handleWebhook } from './stripe.js';
+
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const result = await handleWebhook(req.body, sig);
+  return res.status(result.status).send(result.ok ? 'ok' : result.message);
+});
+
+app.use(express.json());
+
+- Replace the /api/stripe/create-checkout-session route with one that accepts role+tier:
+
+app.post('/api/stripe/create-checkout-session', async (req, res) => {
+  const { email, role = 'user', tier = 'basic' } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'email required' });
+
+  const successUrl = `${process.env.APP_URL}/?sub=success`;
+  const cancelUrl = `${process.env.APP_URL}/?sub=cancel`;
+
+  try {
+    const session = await createCheckoutSession({ email, role, tier, successUrl, cancelUrl });
+    res.json({ id: session.id, url: session.url });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+- Update /api/subscription to return role and tier:
+
+app.get('/api/subscription', (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.json({ status: 'none' });
+  const row = db.prepare('SELECT email, role, tier, status, current_period_end FROM subscriptions WHERE email = ?').get(email);
+  if (!row) return res.json({ status: 'none' });
+  res.json(row);
+});

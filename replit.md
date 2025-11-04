@@ -52,12 +52,12 @@ Preferred communication style: Simple, everyday language.
 - Session-based authentication with cookie credentials
 
 **Core Entities:**
-- **Users**: Profile information with role designation (truck_owner or event_organizer)
+- **Users**: Profile information with role designation (truck_owner, event_organizer, or user/foodie)
 - **Trucks**: Food truck listings with details, images, menu items, pricing
 - **Events**: Event listings with requirements and details
 - **Bookings**: Connection between trucks and events with status tracking
 - **Truck Unavailability**: Calendar system for truck owners to block specific dates when unavailable for bookings
-- **Subscriptions**: Tiered user subscriptions (basic/pro) with Stripe recurring billing
+- **Subscriptions**: Tiered user subscriptions (basic/pro) with role-specific Stripe recurring billing
 
 **Key Backend Patterns:**
 - Storage abstraction layer (`DatabaseStorage` implementing `IStorage`)
@@ -93,10 +93,10 @@ Preferred communication style: Simple, everyday language.
 - Auto-refresh of tokens and session management
 
 **Authorization:**
-- Role-based access: truck_owner vs event_organizer
+- Role-based access: truck_owner, event_organizer, or user (foodie)
 - Protected routes require authentication middleware
 - User-specific data filtering (my-trucks, my-events, my-bookings)
-- Profile completion flow for new users to select role
+- Profile completion flow for new users to select role from three options
 
 **Session Management:**
 - Server-side sessions stored in PostgreSQL
@@ -147,25 +147,33 @@ Preferred communication style: Simple, everyday language.
 - Non-production webhook handling (signature verification disabled for development)
 
 **Subscription Service:**
-- Stripe API for recurring subscription billing
+- Stripe API for recurring subscription billing with role-specific pricing
 - Blueprint integration: `blueprint:javascript_stripe`
-- API keys stored in `STRIPE_SECRET_KEY`, `STRIPE_PRICE_BASIC`, and `STRIPE_PRICE_PRO` environment variables
-- Tiered subscription plans:
-  - **Basic**: $9/month - Standard features including truck listing, booking requests, calendar management
-  - **Pro**: $29/month - Premium features including priority placement, advanced analytics, featured badge
+- Environment variables for role-specific price IDs:
+  - Food Trucks: `STRIPE_PRICE_TRUCK_BASIC` ($49), `STRIPE_PRICE_TRUCK_PRO` ($149)
+  - Event Organizers: `STRIPE_PRICE_ORG_BASIC` ($49), `STRIPE_PRICE_ORG_PRO` ($99)
+  - Users/Foodies: `STRIPE_PRICE_USER_BASIC` ($4.99), `STRIPE_PRICE_USER_PRO` ($19.99)
+- Role-specific subscription plans:
+  - **Food Trucks**: Basic $49/month (starter tools) | Pro $149/month (advanced features)
+  - **Event Organizers**: Basic $49/month (small venues) | Pro $99/month (unlimited events)
+  - **Users/Foodies**: Basic $4.99/month (discovery features) | Pro $19.99/month (power user tools)
 - Subscription flow:
-  - User selects tier on `/subscription` page
-  - Stripe Checkout creates recurring subscription
+  - User selects role during profile setup
+  - `/subscription` page displays role-specific pricing automatically
+  - User selects tier (basic or pro)
+  - Stripe Checkout creates recurring subscription with correct price
   - Webhook confirms subscription activation
-  - Subscription status tracked in subscriptions table
+  - Subscription status tracked in subscriptions table (linked to user via userId)
 - Subscription tracking in subscriptions table:
   - `tier`: basic, pro
   - `status`: active, canceled, past_due, incomplete, trialing, none
   - `stripeCustomerId`: Stripe customer identifier
   - `stripeSubscriptionId`: Stripe subscription identifier
   - `currentPeriodEnd`: End date of current billing period
+  - Role stored in user's `userRole` field (not duplicated in subscriptions)
 - Subscription pages: `/subscription` and `/subscription-success`
 - Webhook endpoint: `/api/subscription/webhook` handles subscription lifecycle events
+- Complete setup instructions in `STRIPE_SETUP_GUIDE.md`
 
 ### Key NPM Packages
 

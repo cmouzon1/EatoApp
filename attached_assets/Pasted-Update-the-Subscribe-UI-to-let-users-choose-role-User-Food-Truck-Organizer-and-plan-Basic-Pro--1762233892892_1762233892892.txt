@@ -1,0 +1,95 @@
+Update the Subscribe UI to let users choose role (User, Food Truck, Organizer) and plan (Basic/Pro) with the correct pricing.
+
+1) Replace /client/src/Subscribe.jsx with:
+
+import React, { useState } from 'react'
+import { api } from './api.js'
+
+const PLAN_LABELS = {
+  user:  { basic: 'User Basic — $4.99/mo',  pro: 'User Pro — $19.99/mo' },
+  truck: { basic: 'Truck Basic',            pro: 'Truck Pro' },
+  org:   { basic: 'Organizer Basic',        pro: 'Organizer Pro' }
+}
+
+export default function Subscribe() {
+  const [email, setEmail] = useState(localStorage.getItem('email') || '')
+  const [role, setRole] = useState(localStorage.getItem('role') || 'user')
+  const [tier, setTier] = useState('basic')
+  const [loading, setLoading] = useState(false)
+
+  async function start() {
+    if (!email) return alert('Enter email')
+    localStorage.setItem('email', email)
+    localStorage.setItem('role', role)
+    setLoading(true)
+    try {
+      const res = await api('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        body: { email, role, tier }
+      })
+      window.location.href = res.url
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{display:'grid', gap:10, maxWidth:420}}>
+      <h3>Choose Your Plan</h3>
+      <label>
+        Email
+        <input placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)} />
+      </label>
+
+      <label>
+        I am a…
+        <select value={role} onChange={e=>setRole(e.target.value)}>
+          <option value="user">User / Foodie</option>
+          <option value="truck">Food Truck</option>
+          <option value="org">Event Organizer</option>
+        </select>
+      </label>
+
+      <label>
+        Plan
+        <select value={tier} onChange={e=>setTier(e.target.value)}>
+          <option value="basic">{PLAN_LABELS[role].basic}</option>
+          <option value="pro">{PLAN_LABELS[role].pro}</option>
+        </select>
+      </label>
+
+      <button disabled={loading} onClick={start}>{loading ? 'Redirecting…' : 'Proceed to Checkout'}</button>
+      <small>You’ll be redirected to Stripe to complete your subscription.</small>
+    </div>
+  )
+}
+
+2) In /client/src/App.jsx, update the sub-status hook and header display:
+
+- Add this helper near the top:
+function useSubStatus() {
+  const [info, setInfo] = React.useState({ status: 'checking' })
+  const email = localStorage.getItem('email') || ''
+  React.useEffect(() => {
+    if (!email) { setInfo({ status: 'none' }); return }
+    fetch(`/api/subscription?email=${encodeURIComponent(email)}`)
+      .then(r=>r.json())
+      .then(d=>setInfo(d || { status: 'none' }))
+      .catch(()=>setInfo({ status: 'none' }))
+  }, [email])
+  return info
+}
+
+- Inside App(), replace the existing gating logic with:
+const info = useSubStatus()
+const gated = (info.status === 'active') && (info.role === 'truck' || info.role === 'org')
+
+- In the header, after the Nav, show who’s signed in and plan status if available:
+<div style={{marginLeft:'auto'}}>
+  {info?.email ? <small>{info.email} — {info.role || 'role'} {info.tier ? `(${info.tier})` : ''} : {info.status}</small> : null}
+  {info.status !== 'active' && <a href="#" onClick={(e)=>{e.preventDefault(); setTab('Subscribe')}} style={{marginLeft:12}}>Subscribe</a>}
+</div>
+
+- Keep Map/Trucks/Events public. Gate Create tab to 'gated' only, else show prompt to Subscribe.
