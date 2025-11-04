@@ -623,9 +623,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     let event: Stripe.Event;
 
     try {
-      // In production, you'd use a webhook secret for verification
-      // For now, we'll just parse the event
-      event = req.body;
+      // Verify webhook signature for payment events
+      const webhookSecret = process.env.STRIPE_PAYMENT_WEBHOOK_SECRET;
+      
+      if (webhookSecret && sig) {
+        try {
+          event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+          console.log('✓ Payment webhook signature verified');
+        } catch (err: any) {
+          console.error('⚠️  Payment webhook signature verification failed:', err.message);
+          return res.status(400).send(`Webhook signature verification failed: ${err.message}`);
+        }
+      } else {
+        // Development mode without signature verification
+        console.log('⚠️  Payment webhook running without signature verification (development mode)');
+        event = req.body;
+      }
 
       // Handle the event
       switch (event.type) {
@@ -756,13 +769,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     let event: Stripe.Event;
 
     try {
-      // IMPORTANT: In production, you MUST verify the Stripe signature using:
-      // const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-      // event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-      // 
-      // This prevents unauthorized requests from spoofing subscription events.
-      // For development/testing, we're parsing the event directly:
-      event = req.body;
+      // Verify webhook signature for subscription events
+      const webhookSecret = process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET;
+      
+      if (webhookSecret && sig) {
+        try {
+          event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+          console.log('✓ Subscription webhook signature verified');
+        } catch (err: any) {
+          console.error('⚠️  Subscription webhook signature verification failed:', err.message);
+          return res.status(400).send(`Webhook signature verification failed: ${err.message}`);
+        }
+      } else {
+        // Development mode without signature verification
+        console.log('⚠️  Subscription webhook running without signature verification (development mode)');
+        event = req.body;
+      }
 
       // Handle the event
       switch (event.type) {
