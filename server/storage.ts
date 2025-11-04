@@ -72,18 +72,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
+    try {
+      const [user] = await db
+        .insert(users)
+        .values(userData)
+        .onConflictDoUpdate({
+          target: users.id,
+          set: {
+            ...userData,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return user;
+    } catch (error: any) {
+      // Handle unique email constraint violation
+      if (error.code === '23505' && error.constraint === 'users_email_unique') {
+        // Check if a user with this email already exists
+        const [existingUser] = await db.select().from(users).where(eq(users.email, userData.email!));
+        if (existingUser) {
+          // Update the existing user's ID to match the new OIDC sub
+          const [updatedUser] = await db
+            .update(users)
+            .set({ 
+              id: userData.id,
+              ...userData,
+              updatedAt: new Date() 
+            })
+            .where(eq(users.email, userData.email!))
+            .returning();
+          return updatedUser;
+        }
+      }
+      throw error;
+    }
   }
 
   async updateUserProfile(id: string, data: Partial<User>): Promise<User | undefined> {
