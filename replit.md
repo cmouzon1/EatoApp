@@ -24,6 +24,18 @@ Preferred communication style: Simple, everyday language.
   - Allows /profile, /subscription, and payment routes for onboarding flow
   - Shows ProfileCompletionPrompt as default fallback for incomplete profiles
 
+**Profile Role Locking & Subscription Prompts:**
+- Implemented role locking system - once a user selects a role (truck_owner, event_organizer, or user), they cannot change it
+  - Frontend: Profile page shows locked role alert with clear messaging about requiring sign out to change roles
+  - Backend: Server-side validation prevents role changes (returns 403 error if attempted)
+  - Only other profile fields (name, phone, bio) can be updated after role is set
+- Added subscription upgrade prompts to both TruckDashboard and OrganizerDashboard
+  - Visible for users without active subscriptions (free tier users)
+  - Shows role-specific premium features and benefits
+  - Provides clear CTAs: "View Subscription Plans" and "Continue with Free"
+  - Automatically hidden for users with active subscriptions
+  - Uses useAuth hook to check subscription status
+
 ## System Architecture
 
 ### Frontend Architecture
