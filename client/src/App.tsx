@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { Header } from "@/components/Header";
+import { ProfileCompletionPrompt } from "@/components/ProfileCompletionPrompt";
 import Landing from "@/pages/Landing";
 import BrowseTrucks from "@/pages/BrowseTrucks";
 import BrowseEvents from "@/pages/BrowseEvents";
@@ -20,7 +21,22 @@ import SubscriptionSuccess from "@/pages/SubscriptionSuccess";
 import NotFound from "@/pages/not-found";
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, hasCompletedProfile } = useAuth();
+
+  // Show profile completion prompt for authenticated users without completed profiles
+  // (except on profile, subscription, and payment pages - users need these to complete onboarding)
+  if (isAuthenticated && !hasCompletedProfile && !isLoading) {
+    return (
+      <Switch>
+        <Route path="/profile" component={Profile} />
+        <Route path="/subscription" component={Subscription} />
+        <Route path="/subscription-success" component={SubscriptionSuccess} />
+        <Route path="/payment-checkout" component={PaymentCheckout} />
+        <Route path="/payment-success" component={PaymentSuccess} />
+        <Route component={ProfileCompletionPrompt} />
+      </Switch>
+    );
+  }
 
   return (
     <Switch>
