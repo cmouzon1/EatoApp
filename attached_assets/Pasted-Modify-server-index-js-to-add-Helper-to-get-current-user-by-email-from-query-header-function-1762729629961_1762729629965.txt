@@ -1,0 +1,152 @@
+Modify /server/index.js to add:
+
+// Helper to get "current user" by email from query/header
+function currentEmail(req) {
+  return (req.headers['x-user-email'] || req.query.email || req.body?.email || '').toLowerCase();
+}
+
+// Fetch subscription/role/tier for email
+app.get('/api/me', (req, res) => {
+  const email = currentEmail(req);
+  if (!email) return res.json({ email: null, role: 'user', tier: 'free', status: 'none' });
+  const row = db.prepare('SELECT email, role, tier, status FROM subscriptions WHERE email = ?').get(email);
+  res.json(row || { email, role: 'user', tier: 'free', status: 'none' });
+});
+
+// ---------- USER FEATURES ----------
+// Favorites
+app.get('/api/favorites', (req, res) => {
+  const email = currentEmail(req);
+  const rows = db.prepare(`
+    SELECT f.id, f.truck_id, t.name, t.cuisine, t.hours
+    FROM favorites f JOIN trucks t ON t.id = f.truck_id
+    WHERE f.user_email = ? ORDER BY f.created_at DESC
+  `).all(email);
+  res.json(rows);
+});
+app.post('/api/favorites', (req, res) => {
+  const email = currentEmail(req);
+  const { truck_id } = req.body;
+  db.prepare('INSERT INTO favorites (user_email, truck_id) VALUES (?, ?)').run(email, truck_id);
+  res.status(201).json({ ok: true });
+});
+app.delete('/api/favorites/:id', (req, res) => {
+  db.prepare('DELETE FROM favorites WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Follows (alerts)
+app.get('/api/follows', (req, res) => {
+  const email = currentEmail(req);
+  const rows = db.prepare(`
+    SELECT f.id, f.truck_id, f.alerts_enabled, t.name, t.cuisine
+    FROM follows f JOIN trucks t ON t.id = f.truck_id
+    WHERE f.user_email = ? ORDER BY f.created_at DESC
+  `).all(email);
+  res.json(rows);
+});
+app.post('/api/follows', (req, res) => {
+  const email = currentEmail(req);
+  const { truck_id, alerts_enabled = 0 } = req.body;
+  db.prepare('INSERT INTO follows (user_email, truck_id, alerts_enabled) VALUES (?, ?, ?)').run(email, truck_id, alerts_enabled ? 1 : 0);
+  res.status(201).json({ ok: true });
+});
+app.patch('/api/follows/:id', (req, res) => {
+  const { alerts_enabled } = req.body;
+  db.prepare('UPDATE follows SET alerts_enabled = ? WHERE id = ?').run(alerts_enabled ? 1 : 0, req.params.id);
+  res.json({ ok: true });
+});
+app.delete('/api/follows/:id', (req, res) => {
+  db.prepare('DELETE FROM follows WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------- TRUCK FEATURES ----------
+// My truck by email (assume one truck per owner email for MVP)
+app.get('/api/my-truck', (req, res) => {
+  const email = currentEmail(req);
+  const row = db.prepare('SELECT * FROM trucks WHERE json_extract(social, "$.email") = ?').get(email);
+  res.json(row || null);
+});
+app.post('/api/my-truck', (req, res) => {
+  const email = currentEmail(req);
+  const { name, cuisine, description, lat, lng, hours } = req.body;
+  const social = JSON.stringify({ email });
+  const info = db.prepare(`
+    INSERT INTO trucks (name, cuisine, description, lat, lng, hours, social)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(name, cuisine, description, lat, lng, hours, social);
+  res.status(201).json(db.prepare('SELECT * FROM trucks WHERE id = ?').get(info.lastInsertRowid));
+});
+
+// Schedules (CRUD)
+app.get('/api/schedules', (req, res) => {
+  const { truck_id } = req.query;
+  const rows = db.prepare('SELECT * FROM schedules WHERE truck_id = ? ORDER BY date, start_time').all(truck_id);
+  res.json(rows);
+});
+app.post('/api/schedules', (req, res) => {
+  const { truck_id, title, date, start_time, end_time, lat, lng, note } = req.body;
+  const info = db.prepare(`
+    INSERT INTO schedules (truck_id, title, date, start_time, end_time, lat, lng, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(truck_id, title, date, start_time, end_time, lat, lng, note);
+  res.status(201).json(db.prepare('SELECT * FROM schedules WHERE id = ?').get(info.lastInsertRowid));
+});
+app.delete('/api/schedules/:id', (req, res) => {
+  db.prepare('DELETE FROM schedules WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Updates (status posts)
+app.get('/api/updates', (req, res) => {
+  const { truck_id } = req.query;
+  const rows = db.prepare('SELECT * FROM updates WHERE truck_id = ? ORDER BY created_at DESC').all(truck_id);
+  res.json(rows);
+});
+app.post('/api/updates', (req, res) => {
+  const { truck_id, message } = req.body;
+  const info = db.prepare('INSERT INTO updates (truck_id, message) VALUES (?, ?)').run(truck_id, message);
+  res.status(201).json(db.prepare('SELECT * FROM updates WHERE id = ?').get(info.lastInsertRowid));
+});
+
+// Simple analytics for a truck
+app.get('/api/truck/analytics', (req, res) => {
+  const { truck_id } = req.query;
+  const followers = db.prepare('SELECT COUNT(*) as c FROM follows WHERE truck_id = ?').get(truck_id)?.c || 0;
+  const favs = db.prepare('SELECT COUNT(*) as c FROM favorites WHERE truck_id = ?').get(truck_id)?.c || 0;
+  const invites = db.prepare('SELECT COUNT(*) as c FROM invites WHERE truck_id = ?').get(truck_id)?.c || 0;
+  const apps = db.prepare('SELECT COUNT(*) as c FROM applications WHERE truck_id = ?').get(truck_id)?.c || 0;
+  res.json({ followers, favorites: favs, invites, applications: apps });
+});
+
+// ---------- ORGANIZER FEATURES ----------
+// Invite trucks to event
+app.post('/api/events/:id/invite', (req, res) => {
+  const { truck_id } = req.body;
+  db.prepare('INSERT INTO invites (event_id, truck_id) VALUES (?, ?)').run(req.params.id, truck_id);
+  res.status(201).json({ ok: true });
+});
+app.get('/api/events/:id/invites', (req, res) => {
+  const rows = db.prepare(`
+    SELECT i.id, i.status, t.id as truck_id, t.name, t.cuisine
+    FROM invites i JOIN trucks t ON t.id = i.truck_id
+    WHERE i.event_id = ? ORDER BY i.created_at DESC
+  `).all(req.params.id);
+  res.json(rows);
+});
+
+// Trucks apply to events
+app.post('/api/events/:id/apply', (req, res) => {
+  const { truck_id, note } = req.body;
+  db.prepare('INSERT INTO applications (event_id, truck_id, note) VALUES (?, ?, ?)').run(req.params.id, truck_id, note || null);
+  res.status(201).json({ ok: true });
+});
+app.get('/api/events/:id/applicants', (req, res) => {
+  const rows = db.prepare(`
+    SELECT a.id, a.status, a.note, t.id as truck_id, t.name, t.cuisine
+    FROM applications a JOIN trucks t ON t.id = a.truck_id
+    WHERE a.event_id = ? ORDER BY a.created_at DESC
+  `).all(req.params.id);
+  res.json(rows);
+});

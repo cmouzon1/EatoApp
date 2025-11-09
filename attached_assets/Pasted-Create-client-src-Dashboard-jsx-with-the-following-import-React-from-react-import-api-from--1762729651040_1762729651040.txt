@@ -1,0 +1,140 @@
+Create /client/src/Dashboard.jsx with the following:
+
+import React from 'react'
+import { api } from './api.js'
+
+const FEATURES = {
+  user: {
+    free:  ['Map', 'Browse'],
+    basic: ['Map', 'Browse', 'Favorites', 'Follow alerts'],
+    pro:   ['Map', 'Browse', 'Favorites', 'Follow alerts', 'Ad-free', 'Priority alerts']
+  },
+  truck: {
+    basic: ['Truck profile', 'Schedules (5 / month)', 'Apply to events', 'See followers count'],
+    pro:   ['Truck profile', 'Unlimited schedules', 'Apply + Auto-invite', 'Analytics dashboard', 'Featured placement (map/search)']
+  },
+  org: {
+    basic: ['1 active event', 'Receive applications', 'Manual invites'],
+    pro:   ['Unlimited events', 'Bulk invites', 'Organizer analytics', 'Priority placement']
+  }
+}
+
+function Section({ title, children }) {
+  return <div style={{marginBottom:16}}><h3>{title}</h3><div>{children}</div></div>
+}
+
+export default function Dashboard({ me }) {
+  if (!me) return null
+  const role = me.role || 'user'
+  const tier = (me.status === 'active' ? me.tier : 'free') || 'free'
+
+  if (role === 'user') return <UserDash tier={tier} />
+  if (role === 'truck') return <TruckDash tier={tier} />
+  if (role === 'org') return <OrgDash tier={tier} />
+  return <div>Unknown role</div>
+}
+
+function UserDash({ tier }) {
+  const [favorites, setFavorites] = React.useState([])
+  const [follows, setFollows] = React.useState([])
+  const email = localStorage.getItem('email') || ''
+
+  React.useEffect(() => {
+    if (!email) return
+    api(`/api/favorites?email=${encodeURIComponent(email)}`).then(setFavorites)
+    api(`/api/follows?email=${encodeURIComponent(email)}`).then(setFollows)
+  }, [email])
+
+  return (
+    <div>
+      <Section title={`Your Plan: ${tier.toUpperCase()}`}>
+        <ul>{FEATURES.user[tier].map(f => <li key={f}>{f}</li>)}</ul>
+      </Section>
+      <Section title="Favorites">
+        <ul>{favorites.map(x => <li key={x.id}><b>{x.name}</b> — {x.cuisine || ''} <small>({x.hours || 'hours N/A'})</small></li>)}</ul>
+        {tier === 'free' && <p>Upgrade for favorites & alerts.</p>}
+      </Section>
+      <Section title="Followed Trucks (alerts)">
+        <ul>{follows.map(x => <li key={x.id}><b>{x.name}</b> — alerts {x.alerts_enabled ? 'ON' : 'OFF'}</li>)}</ul>
+      </Section>
+    </div>
+  )
+}
+
+function TruckDash({ tier }) {
+  const [truck, setTruck] = React.useState(null)
+  const [schedules, setSchedules] = React.useState([])
+  const [updates, setUpdates] = React.useState([])
+  const [analytics, setAnalytics] = React.useState(null)
+  const email = localStorage.getItem('email') || ''
+
+  async function refreshAll(tid) {
+    const [sched, upd, ana] = await Promise.all([
+      api(`/api/schedules?truck_id=${tid}`),
+      api(`/api/updates?truck_id=${tid}`),
+      api(`/api/truck/analytics?truck_id=${tid}`)
+    ])
+    setSchedules(sched); setUpdates(upd); setAnalytics(ana)
+  }
+
+  React.useEffect(() => {
+    if (!email) return
+    api(`/api/my-truck?email=${encodeURIComponent(email)}`).then(async t => {
+      setTruck(t)
+      if (t?.id) await refreshAll(t.id)
+    })
+  }, [email])
+
+  return (
+    <div>
+      <Section title={`Your Plan: ${tier.toUpperCase()}`}>
+        <ul>{FEATURES.truck[tier].map(f => <li key={f}>{f}</li>)}</ul>
+      </Section>
+
+      <Section title="Truck Profile">
+        {truck ? (
+          <div><b>{truck.name}</b> — {truck.cuisine || ''}<br/>{truck.description || ''}<br/>{truck.hours || ''}</div>
+        ) : (
+          <div>No truck linked to your email yet. Create one in the Create tab using the same email.</div>
+        )}
+      </Section>
+
+      <Section title="Schedules">
+        <ul>{schedules.map(s => <li key={s.id}><b>{s.date}</b> {s.start_time}-{s.end_time} @ {s.lat},{s.lng} — {s.title || ''}</li>)}</ul>
+        {tier === 'basic' && <small>Basic: up to 5 schedules/month.</small>}
+      </Section>
+
+      <Section title="Updates">
+        <ul>{updates.map(u => <li key={u.id}>{u.message} <small>{u.created_at}</small></li>)}</ul>
+      </Section>
+
+      <Section title="Analytics (beta)">
+        {analytics ? (
+          <ul>
+            <li>Followers: {analytics.followers}</li>
+            <li>Favorites: {analytics.favorites}</li>
+            <li>Invites: {analytics.invites}</li>
+            <li>Applications: {analytics.applications}</li>
+          </ul>
+        ) : '—'}
+      </Section>
+    </div>
+  )
+}
+
+function OrgDash({ tier }) {
+  const [events, setEvents] = React.useState([])
+  React.useEffect(() => { api('/api/events').then(setEvents) }, [])
+
+  return (
+    <div>
+      <Section title={`Your Plan: ${tier.toUpperCase()}`}>
+        <ul>{FEATURES.org[tier].map(f => <li key={f}>{f}</li>)}</ul>
+      </Section>
+      <Section title="Your Events">
+        <ul>{events.map(e => <li key={e.id}><b>{e.title}</b> — {e.date || 'TBD'} @ {e.location || 'TBD'}</li>)}</ul>
+        {tier === 'basic' && <small>Basic: one active event at a time.</small>}
+      </Section>
+    </div>
+  )
+}
