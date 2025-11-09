@@ -3,14 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Truck as TruckType, Booking as BookingType, Event as EventType } from "@shared/schema";
+import { Truck as TruckType, Booking as BookingType, Event as EventType, Schedule, Update } from "@shared/schema";
 import { TruckCard } from "@/components/TruckCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Truck, Plus, Calendar, DollarSign, CheckCircle, Crown, Sparkles } from "lucide-react";
+import { Truck, Plus, Calendar, DollarSign, CheckCircle, Crown, Sparkles, BarChart3, Heart, Users, Bell } from "lucide-react";
 import { format } from "date-fns";
 
 export default function TruckDashboard() {
@@ -38,6 +38,18 @@ export default function TruckDashboard() {
   const { data: bookings, isLoading: bookingsLoading } = useQuery<(BookingType & { event: EventType; truck: TruckType })[]>({
     queryKey: ["/api/bookings/my-truck-bookings"],
     enabled: isAuthenticated,
+  });
+
+  // Get analytics for the first truck (if exists)
+  const firstTruckId = trucks?.[0]?.id;
+  const { data: analytics } = useQuery<{
+    followers: number;
+    favorites: number;
+    invites: number;
+    applications: number;
+  }>({
+    queryKey: [`/api/truck/analytics?truckId=${firstTruckId}`],
+    enabled: !!firstTruckId,
   });
 
   if (isLoading || trucksLoading) {
@@ -115,7 +127,7 @@ export default function TruckDashboard() {
         )}
 
         {/* Stats */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="grid md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Trucks</CardTitle>
@@ -141,6 +153,28 @@ export default function TruckDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{acceptedCount}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Followers</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-followers">
+                {analytics?.followers || 0}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Favorites</CardTitle>
+              <Heart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-favorites">
+                {analytics?.favorites || 0}
+              </div>
             </CardContent>
           </Card>
         </div>

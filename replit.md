@@ -36,6 +36,23 @@ Preferred communication style: Simple, everyday language.
   - Automatically hidden for users with active subscriptions
   - Uses useAuth hook to check subscription status
 
+**New Marketplace Features (November 9, 2025):**
+- Added 6 new database tables to support enhanced marketplace functionality:
+  - **favorites**: Users can favorite trucks for quick access
+  - **follows**: Users can follow trucks with optional alert preferences
+  - **schedules**: Truck owners can post location schedules (where and when they'll be)
+  - **updates**: Truck owners can post status updates/announcements
+  - **invites**: Event organizers can invite specific trucks to events
+  - **applications**: Truck owners can apply to event opportunities
+- Implemented complete backend API layer:
+  - User features: GET/POST/DELETE endpoints for favorites and follows
+  - Truck features: GET/POST/DELETE endpoints for schedules and updates
+  - Analytics: GET endpoint for truck metrics (followers, favorites, invites, applications)
+  - Organizer features: GET/POST/PATCH endpoints for invites and applications
+- Updated TruckDashboard with analytics display showing followers and favorites count
+- All storage operations use type-safe Drizzle ORM with proper foreign key relationships
+- API routes include authentication middleware and input validation via Zod schemas
+
 ## System Architecture
 
 ### Frontend Architecture
