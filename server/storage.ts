@@ -5,6 +5,12 @@ import {
   bookings,
   truckUnavailability,
   subscriptions,
+  favorites,
+  follows,
+  schedules,
+  updates,
+  invites,
+  applications,
   type User,
   type UpsertUser,
   type Truck,
@@ -17,6 +23,18 @@ import {
   type InsertTruckUnavailability,
   type Subscription,
   type InsertSubscription,
+  type Favorite,
+  type InsertFavorite,
+  type Follow,
+  type InsertFollow,
+  type Schedule,
+  type InsertSchedule,
+  type Update,
+  type InsertUpdate,
+  type Invite,
+  type InsertInvite,
+  type Application,
+  type InsertApplication,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -62,6 +80,47 @@ export interface IStorage {
   getSubscriptionByUserId(userId: string): Promise<Subscription | undefined>;
   upsertSubscription(data: InsertSubscription): Promise<Subscription>;
   updateSubscription(userId: string, data: Partial<Subscription>): Promise<Subscription | undefined>;
+  
+  // Favorites operations
+  getFavoritesByUser(userId: string): Promise<Favorite[]>;
+  addFavorite(data: InsertFavorite): Promise<Favorite>;
+  removeFavorite(id: number): Promise<void>;
+  checkFavorite(userId: string, truckId: number): Promise<Favorite | undefined>;
+  
+  // Follows operations
+  getFollowsByUser(userId: string): Promise<Follow[]>;
+  addFollow(data: InsertFollow): Promise<Follow>;
+  updateFollow(id: number, data: Partial<Follow>): Promise<Follow | undefined>;
+  removeFollow(id: number): Promise<void>;
+  checkFollow(userId: string, truckId: number): Promise<Follow | undefined>;
+  
+  // Schedules operations
+  getSchedulesByTruck(truckId: number): Promise<Schedule[]>;
+  createSchedule(data: InsertSchedule): Promise<Schedule>;
+  deleteSchedule(id: number): Promise<void>;
+  
+  // Updates operations
+  getUpdatesByTruck(truckId: number): Promise<Update[]>;
+  createUpdate(data: InsertUpdate): Promise<Update>;
+  
+  // Truck analytics
+  getTruckAnalytics(truckId: number): Promise<{
+    followers: number;
+    favorites: number;
+    invites: number;
+    applications: number;
+  }>;
+  
+  // Invites operations
+  getInvitesByEvent(eventId: number): Promise<Invite[]>;
+  createInvite(data: InsertInvite): Promise<Invite>;
+  updateInviteStatus(id: number, status: string): Promise<Invite | undefined>;
+  
+  // Applications operations
+  getApplicationsByEvent(eventId: number): Promise<Application[]>;
+  getApplicationsByTruck(truckId: number): Promise<Application[]>;
+  createApplication(data: InsertApplication): Promise<Application>;
+  updateApplicationStatus(id: number, status: string): Promise<Application | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -302,6 +361,206 @@ export class DatabaseStorage implements IStorage {
       .where(eq(subscriptions.userId, userId))
       .returning();
     return subscription;
+  }
+
+  // Favorites operations
+  async getFavoritesByUser(userId: string): Promise<Favorite[]> {
+    return await db
+      .select()
+      .from(favorites)
+      .where(eq(favorites.userId, userId))
+      .orderBy(desc(favorites.createdAt));
+  }
+
+  async addFavorite(data: InsertFavorite): Promise<Favorite> {
+    const [favorite] = await db
+      .insert(favorites)
+      .values(data)
+      .returning();
+    return favorite;
+  }
+
+  async removeFavorite(id: number): Promise<void> {
+    await db.delete(favorites).where(eq(favorites.id, id));
+  }
+
+  async checkFavorite(userId: string, truckId: number): Promise<Favorite | undefined> {
+    const [favorite] = await db
+      .select()
+      .from(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.truckId, truckId)));
+    return favorite;
+  }
+
+  // Follows operations
+  async getFollowsByUser(userId: string): Promise<Follow[]> {
+    return await db
+      .select()
+      .from(follows)
+      .where(eq(follows.userId, userId))
+      .orderBy(desc(follows.createdAt));
+  }
+
+  async addFollow(data: InsertFollow): Promise<Follow> {
+    const [follow] = await db
+      .insert(follows)
+      .values(data)
+      .returning();
+    return follow;
+  }
+
+  async updateFollow(id: number, data: Partial<Follow>): Promise<Follow | undefined> {
+    const [follow] = await db
+      .update(follows)
+      .set(data)
+      .where(eq(follows.id, id))
+      .returning();
+    return follow;
+  }
+
+  async removeFollow(id: number): Promise<void> {
+    await db.delete(follows).where(eq(follows.id, id));
+  }
+
+  async checkFollow(userId: string, truckId: number): Promise<Follow | undefined> {
+    const [follow] = await db
+      .select()
+      .from(follows)
+      .where(and(eq(follows.userId, userId), eq(follows.truckId, truckId)));
+    return follow;
+  }
+
+  // Schedules operations
+  async getSchedulesByTruck(truckId: number): Promise<Schedule[]> {
+    return await db
+      .select()
+      .from(schedules)
+      .where(eq(schedules.truckId, truckId))
+      .orderBy(schedules.date);
+  }
+
+  async createSchedule(data: InsertSchedule): Promise<Schedule> {
+    const [schedule] = await db
+      .insert(schedules)
+      .values(data)
+      .returning();
+    return schedule;
+  }
+
+  async deleteSchedule(id: number): Promise<void> {
+    await db.delete(schedules).where(eq(schedules.id, id));
+  }
+
+  // Updates operations
+  async getUpdatesByTruck(truckId: number): Promise<Update[]> {
+    return await db
+      .select()
+      .from(updates)
+      .where(eq(updates.truckId, truckId))
+      .orderBy(desc(updates.createdAt));
+  }
+
+  async createUpdate(data: InsertUpdate): Promise<Update> {
+    const [update] = await db
+      .insert(updates)
+      .values(data)
+      .returning();
+    return update;
+  }
+
+  // Truck analytics
+  async getTruckAnalytics(truckId: number): Promise<{
+    followers: number;
+    favorites: number;
+    invites: number;
+    applications: number;
+  }> {
+    const [followersCount] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(follows)
+      .where(eq(follows.truckId, truckId));
+    
+    const [favoritesCount] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(favorites)
+      .where(eq(favorites.truckId, truckId));
+    
+    const [invitesCount] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(invites)
+      .where(eq(invites.truckId, truckId));
+    
+    const [applicationsCount] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(applications)
+      .where(eq(applications.truckId, truckId));
+
+    return {
+      followers: Number(followersCount.count) || 0,
+      favorites: Number(favoritesCount.count) || 0,
+      invites: Number(invitesCount.count) || 0,
+      applications: Number(applicationsCount.count) || 0,
+    };
+  }
+
+  // Invites operations
+  async getInvitesByEvent(eventId: number): Promise<Invite[]> {
+    return await db
+      .select()
+      .from(invites)
+      .where(eq(invites.eventId, eventId))
+      .orderBy(desc(invites.createdAt));
+  }
+
+  async createInvite(data: InsertInvite): Promise<Invite> {
+    const [invite] = await db
+      .insert(invites)
+      .values(data)
+      .returning();
+    return invite;
+  }
+
+  async updateInviteStatus(id: number, status: string): Promise<Invite | undefined> {
+    const [invite] = await db
+      .update(invites)
+      .set({ status })
+      .where(eq(invites.id, id))
+      .returning();
+    return invite;
+  }
+
+  // Applications operations
+  async getApplicationsByEvent(eventId: number): Promise<Application[]> {
+    return await db
+      .select()
+      .from(applications)
+      .where(eq(applications.eventId, eventId))
+      .orderBy(desc(applications.createdAt));
+  }
+
+  async getApplicationsByTruck(truckId: number): Promise<Application[]> {
+    return await db
+      .select()
+      .from(applications)
+      .where(eq(applications.truckId, truckId))
+      .orderBy(desc(applications.createdAt));
+  }
+
+  async createApplication(data: InsertApplication): Promise<Application> {
+    const [application] = await db
+      .insert(applications)
+      .values(data)
+      .returning();
+    return application;
+  }
+
+  async updateApplicationStatus(id: number, status: string): Promise<Application | undefined> {
+    const [application] = await db
+      .update(applications)
+      .set({ status })
+      .where(eq(applications.id, id))
+      .returning();
+    return application;
   }
 }
 
