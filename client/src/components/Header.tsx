@@ -21,14 +21,9 @@ type SubscriptionStatus = {
 };
 
 export function Header() {
-  const { user, isAuthenticated, isTruckOwner, isEventOrganizer } = useAuth();
+  const { user, isAuthenticated, isTruckOwner, isEventOrganizer, subscription } = useAuth();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const { data: subscriptionStatus } = useQuery<SubscriptionStatus>({
-    queryKey: ['/api/subscription/status'],
-    enabled: isAuthenticated,
-  });
 
   const navLinks = [
     { href: "/trucks", label: "Browse Trucks", icon: Truck },
@@ -102,9 +97,9 @@ export function Header() {
                       <p className="text-xs text-muted-foreground" data-testid="text-user-email">
                         {user.email}
                       </p>
-                      {subscriptionStatus && subscriptionStatus.status === 'active' && (
-                        <Badge variant="outline" className="mt-1 text-xs w-fit" data-testid="badge-subscription-tier">
-                          {subscriptionStatus.tier === 'pro' ? 'Pro' : 'Basic'}
+                      {subscription && subscription.status === 'active' && (
+                        <Badge variant="outline" className="mt-1 text-xs w-fit capitalize" data-testid="badge-subscription-tier">
+                          {subscription.tier}
                         </Badge>
                       )}
                     </div>
