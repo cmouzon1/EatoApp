@@ -2,26 +2,26 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { CheckCircle } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { getDashboardPath, getRoleDisplayName } from "@/lib/navigation";
 
 export default function SubscriptionSuccess() {
   const [, setLocation] = useLocation();
-  const { isTruckOwner } = useAuth();
+  const { userRole, subscription } = useAuth();
 
   useEffect(() => {
-    // Invalidate subscription status query to refresh data
+    // Invalidate queries to refresh user data with subscription info
     queryClient.invalidateQueries({ queryKey: ['/api/subscription/status'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
   }, []);
 
   const handleGoToDashboard = () => {
-    // Route to appropriate dashboard based on user role
-    if (isTruckOwner) {
-      setLocation('/dashboard/truck');
-    } else {
-      setLocation('/dashboard/organizer');
-    }
+    // Route to appropriate destination based on user role
+    const dashboardPath = getDashboardPath(userRole);
+    setLocation(dashboardPath);
   };
 
   return (
@@ -37,9 +37,18 @@ export default function SubscriptionSuccess() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {subscription && (
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-sm text-muted-foreground">Your plan:</span>
+              <Badge variant="default" className="text-sm capitalize">
+                {subscription.tier}
+              </Badge>
+            </div>
+          )}
+          
           <div className="bg-muted p-4 rounded-lg space-y-2">
             <p className="text-sm text-muted-foreground">
-              You now have access to all the features included in your subscription tier.
+              You now have access to all the features included in your subscription tier as a <strong>{getRoleDisplayName(userRole)}</strong>.
             </p>
             <p className="text-sm text-muted-foreground">
               You'll receive a confirmation email shortly with your subscription details.
@@ -50,7 +59,7 @@ export default function SubscriptionSuccess() {
             className="w-full"
             data-testid="button-go-to-dashboard"
           >
-            Go to Dashboard
+            {userRole === "user" ? "Start Browsing" : "Go to Dashboard"}
           </Button>
         </CardContent>
       </Card>
