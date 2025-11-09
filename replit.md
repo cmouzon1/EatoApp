@@ -8,6 +8,22 @@ Eato is a two-sided marketplace platform that connects food truck owners with ev
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Updates (November 9, 2025)
+
+**Role-Based Navigation & Profile Completion Improvements:**
+- Added `hasCompletedProfile` flag to backend API and useAuth hook to detect profile completion status
+- Created `getDashboardPath()` helper function in `client/src/lib/navigation.ts` for role-based dashboard routing
+  - `truck_owner` → `/dashboard/truck`
+  - `event_organizer` → `/dashboard/organizer`
+  - `user` (foodie) → `/trucks` (browse page, no dedicated dashboard)
+- Fixed SubscriptionSuccess page to redirect users to correct role-based destination using getDashboardPath
+- Added subscription tier badge display in Header component user dropdown menu
+- Implemented ProfileCompletionPrompt component with clear free registration messaging
+- Added profile completion navigation guards in App.tsx:
+  - Blocks access to protected routes (/trucks, /events, /dashboard/*) until profile is complete
+  - Allows /profile, /subscription, and payment routes for onboarding flow
+  - Shows ProfileCompletionPrompt as default fallback for incomplete profiles
+
 ## System Architecture
 
 ### Frontend Architecture
