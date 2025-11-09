@@ -909,6 +909,336 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== USER FEATURES =====
+  // Favorites routes
+  app.get('/api/favorites', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const favorites = await storage.getFavoritesByUser(userId);
+      res.json(favorites);
+    } catch (error) {
+      console.error("Error fetching favorites:", error);
+      res.status(500).json({ message: "Failed to fetch favorites" });
+    }
+  });
+
+  app.post('/api/favorites', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { truckId } = req.body;
+      
+      // Check if already favorited
+      const existing = await storage.checkFavorite(userId, truckId);
+      if (existing) {
+        return res.status(400).json({ message: "Truck already in favorites" });
+      }
+
+      const favorite = await storage.addFavorite({ userId, truckId });
+      res.status(201).json(favorite);
+    } catch (error) {
+      console.error("Error adding favorite:", error);
+      res.status(500).json({ message: "Failed to add favorite" });
+    }
+  });
+
+  app.delete('/api/favorites/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid favorite ID" });
+      }
+      
+      await storage.removeFavorite(id);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error removing favorite:", error);
+      res.status(500).json({ message: "Failed to remove favorite" });
+    }
+  });
+
+  // Follows routes
+  app.get('/api/follows', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const follows = await storage.getFollowsByUser(userId);
+      res.json(follows);
+    } catch (error) {
+      console.error("Error fetching follows:", error);
+      res.status(500).json({ message: "Failed to fetch follows" });
+    }
+  });
+
+  app.post('/api/follows', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { truckId, alertsEnabled = false } = req.body;
+      
+      // Check if already following
+      const existing = await storage.checkFollow(userId, truckId);
+      if (existing) {
+        return res.status(400).json({ message: "Already following this truck" });
+      }
+
+      const follow = await storage.addFollow({ userId, truckId, alertsEnabled });
+      res.status(201).json(follow);
+    } catch (error) {
+      console.error("Error adding follow:", error);
+      res.status(500).json({ message: "Failed to follow truck" });
+    }
+  });
+
+  app.patch('/api/follows/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid follow ID" });
+      }
+      
+      const { alertsEnabled } = req.body;
+      const follow = await storage.updateFollow(id, { alertsEnabled });
+      res.json(follow);
+    } catch (error) {
+      console.error("Error updating follow:", error);
+      res.status(500).json({ message: "Failed to update follow" });
+    }
+  });
+
+  app.delete('/api/follows/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid follow ID" });
+      }
+      
+      await storage.removeFollow(id);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error removing follow:", error);
+      res.status(500).json({ message: "Failed to unfollow truck" });
+    }
+  });
+
+  // ===== TRUCK FEATURES =====
+  // Schedules routes
+  app.get('/api/schedules', async (req, res) => {
+    try {
+      const truckId = parseInt(req.query.truckId as string);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      
+      const schedules = await storage.getSchedulesByTruck(truckId);
+      res.json(schedules);
+    } catch (error) {
+      console.error("Error fetching schedules:", error);
+      res.status(500).json({ message: "Failed to fetch schedules" });
+    }
+  });
+
+  app.post('/api/schedules', isAuthenticated, async (req: any, res) => {
+    try {
+      const { truckId, title, date, startTime, endTime, lat, lng, note } = req.body;
+      
+      const schedule = await storage.createSchedule({
+        truckId,
+        title,
+        date: new Date(date),
+        startTime,
+        endTime,
+        lat,
+        lng,
+        note,
+      });
+      
+      res.status(201).json(schedule);
+    } catch (error) {
+      console.error("Error creating schedule:", error);
+      res.status(500).json({ message: "Failed to create schedule" });
+    }
+  });
+
+  app.delete('/api/schedules/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid schedule ID" });
+      }
+      
+      await storage.deleteSchedule(id);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error deleting schedule:", error);
+      res.status(500).json({ message: "Failed to delete schedule" });
+    }
+  });
+
+  // Updates/Posts routes
+  app.get('/api/updates', async (req, res) => {
+    try {
+      const truckId = parseInt(req.query.truckId as string);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      
+      const updates = await storage.getUpdatesByTruck(truckId);
+      res.json(updates);
+    } catch (error) {
+      console.error("Error fetching updates:", error);
+      res.status(500).json({ message: "Failed to fetch updates" });
+    }
+  });
+
+  app.post('/api/updates', isAuthenticated, async (req: any, res) => {
+    try {
+      const { truckId, message } = req.body;
+      
+      const update = await storage.createUpdate({ truckId, message });
+      res.status(201).json(update);
+    } catch (error) {
+      console.error("Error creating update:", error);
+      res.status(500).json({ message: "Failed to create update" });
+    }
+  });
+
+  // Truck analytics route
+  app.get('/api/truck/analytics', async (req, res) => {
+    try {
+      const truckId = parseInt(req.query.truckId as string);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      
+      const analytics = await storage.getTruckAnalytics(truckId);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching analytics:", error);
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // ===== ORGANIZER FEATURES =====
+  // Invites routes
+  app.get('/api/events/:id/invites', isAuthenticated, async (req: any, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      if (isNaN(eventId)) {
+        return res.status(400).json({ message: "Invalid event ID" });
+      }
+      
+      const invites = await storage.getInvitesByEvent(eventId);
+      res.json(invites);
+    } catch (error) {
+      console.error("Error fetching invites:", error);
+      res.status(500).json({ message: "Failed to fetch invites" });
+    }
+  });
+
+  app.post('/api/events/:id/invite', isAuthenticated, async (req: any, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      if (isNaN(eventId)) {
+        return res.status(400).json({ message: "Invalid event ID" });
+      }
+      
+      const { truckId } = req.body;
+      
+      const invite = await storage.createInvite({
+        eventId,
+        truckId,
+      });
+      
+      res.status(201).json(invite);
+    } catch (error) {
+      console.error("Error creating invite:", error);
+      res.status(500).json({ message: "Failed to create invite" });
+    }
+  });
+
+  app.patch('/api/invites/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid invite ID" });
+      }
+      
+      const { status } = req.body;
+      const invite = await storage.updateInviteStatus(id, status);
+      res.json(invite);
+    } catch (error) {
+      console.error("Error updating invite:", error);
+      res.status(500).json({ message: "Failed to update invite" });
+    }
+  });
+
+  // Applications routes
+  app.get('/api/events/:id/applications', isAuthenticated, async (req: any, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      if (isNaN(eventId)) {
+        return res.status(400).json({ message: "Invalid event ID" });
+      }
+      
+      const applications = await storage.getApplicationsByEvent(eventId);
+      res.json(applications);
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      res.status(500).json({ message: "Failed to fetch applications" });
+    }
+  });
+
+  app.get('/api/trucks/:id/applications', isAuthenticated, async (req: any, res) => {
+    try {
+      const truckId = parseInt(req.params.id);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      
+      const applications = await storage.getApplicationsByTruck(truckId);
+      res.json(applications);
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      res.status(500).json({ message: "Failed to fetch applications" });
+    }
+  });
+
+  app.post('/api/events/:id/apply', isAuthenticated, async (req: any, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      if (isNaN(eventId)) {
+        return res.status(400).json({ message: "Invalid event ID" });
+      }
+      
+      const { truckId, note } = req.body;
+      
+      const application = await storage.createApplication({
+        eventId,
+        truckId,
+        note,
+      });
+      
+      res.status(201).json(application);
+    } catch (error) {
+      console.error("Error creating application:", error);
+      res.status(500).json({ message: "Failed to create application" });
+    }
+  });
+
+  app.patch('/api/applications/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid application ID" });
+      }
+      
+      const { status } = req.body;
+      const application = await storage.updateApplicationStatus(id, status);
+      res.json(application);
+    } catch (error) {
+      console.error("Error updating application:", error);
+      res.status(500).json({ message: "Failed to update application" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
