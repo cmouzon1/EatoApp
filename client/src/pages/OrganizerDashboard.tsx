@@ -1,16 +1,22 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Event as EventType, Booking as BookingType, Truck as TruckType } from "@shared/schema";
+import { Event as EventType, Booking as BookingType, Truck as TruckType, Invite as InviteType, insertInviteSchema } from "@shared/schema";
 import { EventCard } from "@/components/EventCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Calendar, Plus, Truck, CheckCircle, X, Check, CreditCard, Crown, Sparkles } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Calendar, Plus, Truck, CheckCircle, X, Check, CreditCard, Crown, Sparkles, UserPlus, Send } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -194,6 +200,9 @@ export default function OrganizerDashboard() {
           </Card>
         )}
 
+        {/* Invite Management */}
+        {events && events.length > 0 && <InviteManagement events={events} />}
+
         {/* Truck Applications */}
         <div>
           <h2 className="text-2xl font-bold mb-6 font-heading">Truck Applications</h2>
@@ -315,6 +324,214 @@ export default function OrganizerDashboard() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Invite Management Component
+function InviteManagement({ events }: { events: EventType[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<number>(events[0]?.id || 0);
+  const { toast } = useToast();
+
+  const form = useForm<z.infer<typeof insertInviteSchema>>({
+    resolver: zodResolver(insertInviteSchema),
+    defaultValues: {
+      eventId: selectedEventId,
+      truckId: 0,
+      status: "pending",
+    },
+  });
+
+  // Sync form eventId when selectedEventId changes
+  useEffect(() => {
+    form.setValue("eventId", selectedEventId);
+  }, [selectedEventId, form]);
+
+  // Fetch all trucks for invitation
+  const { data: allTrucks } = useQuery<TruckType[]>({
+    queryKey: ["/api/trucks"],
+  });
+
+  // Fetch invites for selected event
+  const { data: invites } = useQuery<(InviteType & { truck: TruckType })[]>({
+    queryKey: [`/api/invites?eventId=${selectedEventId}`],
+    enabled: !!selectedEventId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof insertInviteSchema>) => {
+      return apiRequest("POST", "/api/invites", values);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/invites?eventId=${selectedEventId}`] });
+      toast({
+        title: "Invite sent",
+        description: "Truck has been invited to your event",
+      });
+      setIsOpen(false);
+      form.reset({ eventId: selectedEventId, truckId: 0, status: "pending" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send invite",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ inviteId, status }: { inviteId: number; status: string }) => {
+      return apiRequest("PATCH", `/api/invites/${inviteId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/invites?eventId=${selectedEventId}`] });
+      toast({
+        title: "Invite updated",
+        description: "Invite status has been updated",
+      });
+    },
+  });
+
+  const onSubmit = (values: z.infer<typeof insertInviteSchema>) => {
+    createMutation.mutate({ ...values, eventId: selectedEventId });
+  };
+
+  // Filter out already invited trucks
+  const invitedTruckIds = invites?.map(inv => inv.truckId) || [];
+  const availableTrucks = allTrucks?.filter(truck => !invitedTruckIds.includes(truck.id)) || [];
+
+  const statusColors: { [key: string]: string } = {
+    pending: "bg-amber-500",
+    accepted: "bg-green-500",
+    declined: "bg-gray-500",
+  };
+
+  return (
+    <div className="mb-12">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold font-heading flex items-center gap-3">
+          <UserPlus className="h-6 w-6" />
+          Invite Trucks
+        </h2>
+        <div className="flex items-center gap-3">
+          {events.length > 1 && (
+            <Select value={selectedEventId.toString()} onValueChange={(val) => setSelectedEventId(parseInt(val))}>
+              <SelectTrigger className="w-48" data-testid="select-event-invite">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {events.map((event) => (
+                  <SelectItem key={event.id} value={event.id.toString()} data-testid={`select-item-event-${event.id}`}>
+                    {event.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-send-invite" disabled={availableTrucks.length === 0}>
+                <Send className="mr-2 h-4 w-4" />
+                Send Invite
+              </Button>
+            </DialogTrigger>
+            <DialogContent data-testid="dialog-invite">
+              <DialogHeader>
+                <DialogTitle>Invite Truck to Event</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="truckId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Select Truck</FormLabel>
+                        <Select
+                          value={field.value?.toString() || ""}
+                          onValueChange={(val) => field.onChange(parseInt(val))}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-truck-invite">
+                              <SelectValue placeholder="Choose a truck to invite" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {availableTrucks.map((truck) => (
+                              <SelectItem key={truck.id} value={truck.id.toString()} data-testid={`select-item-truck-invite-${truck.id}`}>
+                                {truck.name} {truck.cuisine && `- ${truck.cuisine}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsOpen(false)}
+                      data-testid="button-cancel-invite"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={createMutation.isPending}
+                      data-testid="button-submit-invite"
+                    >
+                      {createMutation.isPending ? "Sending..." : "Send Invite"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Display sent invites */}
+      {invites && invites.length > 0 ? (
+        <div className="grid gap-4">
+          {invites.map((invite) => (
+            <Card key={invite.id} className="hover-elevate" data-testid={`invite-card-${invite.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="font-semibold">{invite.truck.name}</p>
+                      {invite.truck.cuisine && (
+                        <p className="text-sm text-muted-foreground">{invite.truck.cuisine}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge className={`${statusColors[invite.status]} text-white border-0`}>
+                      {invite.status.charAt(0).toUpperCase() + invite.status.slice(1)}
+                    </Badge>
+                    <Button variant="outline" size="sm" asChild data-testid={`button-view-truck-${invite.truck.id}`}>
+                      <Link href={`/trucks/${invite.truck.id}`}>View Truck</Link>
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-8">
+            <Send className="h-12 w-12 text-muted-foreground mb-3" />
+            <p className="text-muted-foreground text-center">
+              No invites sent yet. Start inviting trucks to your event!
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
