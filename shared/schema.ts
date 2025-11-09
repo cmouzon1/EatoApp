@@ -220,3 +220,162 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
 });
 export type Subscription = typeof subscriptions.$inferSelect;
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+
+// Favorites table - users can favorite trucks
+export const favorites = pgTable("favorites", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  truckId: integer("truck_id").notNull().references(() => trucks.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const favoritesRelations = relations(favorites, ({ one }) => ({
+  user: one(users, {
+    fields: [favorites.userId],
+    references: [users.id],
+  }),
+  truck: one(trucks, {
+    fields: [favorites.truckId],
+    references: [trucks.id],
+  }),
+}));
+
+// Follows table - users can follow trucks with alert preferences
+export const follows = pgTable("follows", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  truckId: integer("truck_id").notNull().references(() => trucks.id),
+  alertsEnabled: boolean("alerts_enabled").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const followsRelations = relations(follows, ({ one }) => ({
+  user: one(users, {
+    fields: [follows.userId],
+    references: [users.id],
+  }),
+  truck: one(trucks, {
+    fields: [follows.truckId],
+    references: [trucks.id],
+  }),
+}));
+
+// Schedules table - truck location schedules
+export const schedules = pgTable("schedules", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  truckId: integer("truck_id").notNull().references(() => trucks.id),
+  title: text("title"),
+  date: timestamp("date").notNull(),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  lat: real("lat"),
+  lng: real("lng"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const schedulesRelations = relations(schedules, ({ one }) => ({
+  truck: one(trucks, {
+    fields: [schedules.truckId],
+    references: [trucks.id],
+  }),
+}));
+
+// Updates table - truck status posts/announcements
+export const updates = pgTable("updates", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  truckId: integer("truck_id").notNull().references(() => trucks.id),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const updatesRelations = relations(updates, ({ one }) => ({
+  truck: one(trucks, {
+    fields: [updates.truckId],
+    references: [trucks.id],
+  }),
+}));
+
+// Invites table - organizers invite trucks to events
+export const invites = pgTable("invites", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  eventId: integer("event_id").notNull().references(() => events.id),
+  truckId: integer("truck_id").notNull().references(() => trucks.id),
+  status: varchar("status", { enum: ["pending", "accepted", "declined"] }).default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const invitesRelations = relations(invites, ({ one }) => ({
+  event: one(events, {
+    fields: [invites.eventId],
+    references: [events.id],
+  }),
+  truck: one(trucks, {
+    fields: [invites.truckId],
+    references: [trucks.id],
+  }),
+}));
+
+// Applications table - trucks apply to events
+export const applications = pgTable("applications", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  eventId: integer("event_id").notNull().references(() => events.id),
+  truckId: integer("truck_id").notNull().references(() => trucks.id),
+  note: text("note"),
+  status: varchar("status", { enum: ["applied", "accepted", "rejected"] }).default("applied"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const applicationsRelations = relations(applications, ({ one }) => ({
+  event: one(events, {
+    fields: [applications.eventId],
+    references: [events.id],
+  }),
+  truck: one(trucks, {
+    fields: [applications.truckId],
+    references: [trucks.id],
+  }),
+}));
+
+// Insert schemas and types for new tables
+export const insertFavoriteSchema = createInsertSchema(favorites).omit({
+  id: true,
+  createdAt: true,
+});
+export type Favorite = typeof favorites.$inferSelect;
+export type InsertFavorite = z.infer<typeof insertFavoriteSchema>;
+
+export const insertFollowSchema = createInsertSchema(follows).omit({
+  id: true,
+  createdAt: true,
+});
+export type Follow = typeof follows.$inferSelect;
+export type InsertFollow = z.infer<typeof insertFollowSchema>;
+
+export const insertScheduleSchema = createInsertSchema(schedules).omit({
+  id: true,
+  createdAt: true,
+});
+export type Schedule = typeof schedules.$inferSelect;
+export type InsertSchedule = z.infer<typeof insertScheduleSchema>;
+
+export const insertUpdateSchema = createInsertSchema(updates).omit({
+  id: true,
+  createdAt: true,
+});
+export type Update = typeof updates.$inferSelect;
+export type InsertUpdate = z.infer<typeof insertUpdateSchema>;
+
+export const insertInviteSchema = createInsertSchema(invites).omit({
+  id: true,
+  createdAt: true,
+});
+export type Invite = typeof invites.$inferSelect;
+export type InsertInvite = z.infer<typeof insertInviteSchema>;
+
+export const insertApplicationSchema = createInsertSchema(applications).omit({
+  id: true,
+  createdAt: true,
+});
+export type Application = typeof applications.$inferSelect;
+export type InsertApplication = z.infer<typeof insertApplicationSchema>;
