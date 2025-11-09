@@ -57,6 +57,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       
+      // Get current user to check if role is already set
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
       // Validate input
       const profileSchema = z.object({
         firstName: z.string().optional(),
@@ -67,6 +73,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const validatedData = profileSchema.parse(req.body);
+      
+      // Prevent role changes if role is already set
+      if (currentUser.userRole && validatedData.userRole && currentUser.userRole !== validatedData.userRole) {
+        return res.status(403).json({ 
+          message: "Role cannot be changed once set. Please sign out and create a new account to use a different role." 
+        });
+      }
       
       const updatedUser = await storage.updateUserProfile(userId, validatedData);
       

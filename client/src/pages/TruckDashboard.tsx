@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Truck, Plus, Calendar, DollarSign, CheckCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Truck, Plus, Calendar, DollarSign, CheckCircle, Crown, Sparkles } from "lucide-react";
 import { format } from "date-fns";
 
 export default function TruckDashboard() {
-  const { user, isAuthenticated, isLoading, isTruckOwner } = useAuth();
+  const { user, isAuthenticated, isLoading, isTruckOwner, subscription } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -77,6 +78,41 @@ export default function TruckDashboard() {
             </Link>
           </Button>
         </div>
+
+        {/* Subscription Prompt */}
+        {(!subscription || subscription.status !== 'active') && (
+          <Alert className="mb-8 border-primary/50 bg-primary/5" data-testid="alert-subscription-prompt">
+            <Crown className="h-5 w-5 text-primary" />
+            <AlertTitle className="text-lg font-semibold mb-2 flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              Unlock Your Full Potential
+            </AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p className="text-muted-foreground">
+                You're currently using the free tier. Upgrade to access premium features like:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground ml-2">
+                <li>Priority placement in search results</li>
+                <li>Advanced analytics and booking insights</li>
+                <li>Multiple truck profiles</li>
+                <li>Custom branding and promotional tools</li>
+              </ul>
+              <div className="flex flex-wrap gap-3 pt-2">
+                <Button asChild data-testid="button-view-subscription">
+                  <Link href="/subscription">
+                    <Crown className="mr-2 h-4 w-4" />
+                    View Subscription Plans
+                  </Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/trucks/new">
+                    Continue with Free
+                  </Link>
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Stats */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">

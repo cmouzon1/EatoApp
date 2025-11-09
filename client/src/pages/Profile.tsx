@@ -10,8 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
-import { User, Truck, Calendar, Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { User, Truck, Calendar, Loader2, AlertCircle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getRoleDisplayName } from "@/lib/navigation";
 
 export default function Profile() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -67,13 +69,21 @@ export default function Profile() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    mutation.mutate({
+    
+    // Only send userRole if it's not already set (first time setup)
+    const updateData: any = {
       firstName,
       lastName,
       phoneNumber,
       bio,
-      userRole,
-    });
+    };
+    
+    // Allow role selection only if not already set
+    if (!user?.userRole) {
+      updateData.userRole = userRole;
+    }
+    
+    mutation.mutate(updateData);
   };
 
   if (isLoading) {
@@ -157,32 +167,50 @@ export default function Profile() {
 
               <div className="space-y-3">
                 <Label>I am a...</Label>
-                <RadioGroup value={userRole} onValueChange={(value: any) => setUserRole(value)}>
-                  <div className="flex items-center space-x-3 space-y-0">
-                    <RadioGroupItem value="truck_owner" id="truck_owner" data-testid="radio-truck-owner" />
-                    <Label htmlFor="truck_owner" className="font-normal cursor-pointer flex items-center gap-2">
-                      <Truck className="h-4 w-4" />
-                      Food Truck Owner
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-3 space-y-0">
-                    <RadioGroupItem value="event_organizer" id="event_organizer" data-testid="radio-event-organizer" />
-                    <Label htmlFor="event_organizer" className="font-normal cursor-pointer flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Event Organizer
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-3 space-y-0">
-                    <RadioGroupItem value="user" id="user" data-testid="radio-user" />
-                    <Label htmlFor="user" className="font-normal cursor-pointer flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Foodie / App User
-                    </Label>
-                  </div>
-                </RadioGroup>
-                <p className="text-sm text-muted-foreground">
-                  This determines which dashboard you see and what actions you can take
-                </p>
+                {user?.userRole ? (
+                  <Alert data-testid="alert-role-locked">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      <div className="space-y-2">
+                        <p className="font-medium">
+                          Your role is set to: <span className="text-primary">{getRoleDisplayName(user.userRole)}</span>
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          To change your role, you need to sign out and create a new account. This prevents accidental switching between different account types.
+                        </p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <>
+                    <RadioGroup value={userRole} onValueChange={(value: any) => setUserRole(value)}>
+                      <div className="flex items-center space-x-3 space-y-0">
+                        <RadioGroupItem value="truck_owner" id="truck_owner" data-testid="radio-truck-owner" />
+                        <Label htmlFor="truck_owner" className="font-normal cursor-pointer flex items-center gap-2">
+                          <Truck className="h-4 w-4" />
+                          Food Truck Owner
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-3 space-y-0">
+                        <RadioGroupItem value="event_organizer" id="event_organizer" data-testid="radio-event-organizer" />
+                        <Label htmlFor="event_organizer" className="font-normal cursor-pointer flex items-center gap-2">
+                          <Calendar className="h-4 w-4" />
+                          Event Organizer
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-3 space-y-0">
+                        <RadioGroupItem value="user" id="user" data-testid="radio-user" />
+                        <Label htmlFor="user" className="font-normal cursor-pointer flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          Foodie / App User
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                    <p className="text-sm text-muted-foreground">
+                      This determines which dashboard you see and what actions you can take
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="flex justify-end">
