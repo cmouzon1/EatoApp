@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { Truck as TruckType, User } from "@shared/schema";
+import { Truck as TruckType, User, Schedule, Update } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
-import { ArrowLeft, Clock, DollarSign, MapPin, Phone, Globe, Instagram, Facebook } from "lucide-react";
+import { ArrowLeft, Clock, DollarSign, MapPin, Phone, Globe, Instagram, Facebook, Calendar, Megaphone } from "lucide-react";
+import { format } from "date-fns";
 import placeholderTruck from "@assets/generated_images/Orange_food_truck_exterior_7079da09.png";
 import placeholderFood from "@assets/generated_images/Gourmet_tacos_close-up_f3279562.png";
 
@@ -20,6 +21,16 @@ export default function TruckDetail() {
 
   const { data: truck, isLoading } = useQuery<TruckType>({
     queryKey: [`/api/trucks/${truckId}`],
+    enabled: !!truckId,
+  });
+
+  const { data: schedules } = useQuery<Schedule[]>({
+    queryKey: [`/api/schedules?truckId=${truckId}`],
+    enabled: !!truckId,
+  });
+
+  const { data: updates } = useQuery<Update[]>({
+    queryKey: [`/api/updates?truckId=${truckId}`],
     enabled: !!truckId,
   });
 
@@ -146,6 +157,67 @@ export default function TruckDetail() {
                         {item.description && (
                           <p className="text-sm text-muted-foreground">{item.description}</p>
                         )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Upcoming Schedule */}
+            {schedules && schedules.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-bold mb-4 font-heading flex items-center gap-2">
+                  <Calendar className="h-6 w-6" />
+                  Where to Find Us
+                </h2>
+                <div className="space-y-3">
+                  {schedules.map((schedule) => (
+                    <Card key={schedule.id} data-testid={`schedule-${schedule.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start gap-4">
+                          <div className="flex-1">
+                            <h3 className="font-semibold mb-1">{schedule.location}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              {format(new Date(schedule.date), "EEEE, MMMM d, yyyy")}
+                            </p>
+                            {schedule.startTime && schedule.endTime && (
+                              <p className="text-sm text-muted-foreground">
+                                {schedule.startTime} - {schedule.endTime}
+                              </p>
+                            )}
+                            {schedule.notes && (
+                              <p className="text-sm mt-2">{schedule.notes}</p>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Updates & Announcements */}
+            {updates && updates.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-bold mb-4 font-heading flex items-center gap-2">
+                  <Megaphone className="h-6 w-6" />
+                  Latest Updates
+                </h2>
+                <div className="space-y-3">
+                  {updates.map((update) => (
+                    <Card key={update.id} data-testid={`update-${update.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start gap-4">
+                          <div className="flex-1">
+                            <h3 className="font-semibold mb-1">{update.title}</h3>
+                            <p className="text-sm text-muted-foreground mb-2">
+                              {format(new Date(update.createdAt), "MMMM d, yyyy")}
+                            </p>
+                            <p className="text-sm">{update.content}</p>
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}

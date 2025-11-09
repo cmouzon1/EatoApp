@@ -1,17 +1,26 @@
-import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Truck as TruckType, Booking as BookingType, Event as EventType, Schedule, Update } from "@shared/schema";
+import { Truck as TruckType, Booking as BookingType, Event as EventType, Schedule, Update, insertScheduleSchema, insertUpdateSchema } from "@shared/schema";
 import { TruckCard } from "@/components/TruckCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Truck, Plus, Calendar, DollarSign, CheckCircle, Crown, Sparkles, BarChart3, Heart, Users, Bell } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Truck, Plus, Calendar, DollarSign, CheckCircle, Crown, Sparkles, BarChart3, Heart, Users, Bell, Megaphone, MapPin, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { z } from "zod";
 
 export default function TruckDashboard() {
   const { user, isAuthenticated, isLoading, isTruckOwner, subscription } = useAuth();
@@ -205,7 +214,7 @@ export default function TruckDashboard() {
         )}
 
         {/* Recent Bookings */}
-        <div>
+        <div className="mb-12">
           <h2 className="text-2xl font-bold mb-6 font-heading">Booking Requests</h2>
           {bookingsLoading ? (
             <div className="space-y-4">
@@ -271,7 +280,420 @@ export default function TruckDashboard() {
             </Card>
           )}
         </div>
+
+        {/* Schedule & Updates Management - only show if truck owner has trucks */}
+        {trucks && trucks.length > 0 && <ScheduleManagement trucks={trucks} />}
+        {trucks && trucks.length > 0 && <UpdateManagement trucks={trucks} />}
       </div>
+    </div>
+  );
+}
+
+// Schedule Management Component
+function ScheduleManagement({ trucks }: { trucks: TruckType[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedTruckId, setSelectedTruckId] = useState<number>(trucks[0]?.id || 0);
+  const { toast } = useToast();
+
+  const form = useForm<z.infer<typeof insertScheduleSchema>>({
+    resolver: zodResolver(insertScheduleSchema),
+    defaultValues: {
+      truckId: selectedTruckId,
+      location: "",
+      date: "",
+      startTime: "",
+      endTime: "",
+      notes: "",
+    },
+  });
+
+  // Sync form truckId when selectedTruckId changes
+  useEffect(() => {
+    form.setValue("truckId", selectedTruckId);
+  }, [selectedTruckId, form]);
+
+  const { data: schedules } = useQuery<Schedule[]>({
+    queryKey: [`/api/schedules?truckId=${selectedTruckId}`],
+    enabled: !!selectedTruckId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof insertScheduleSchema>) => {
+      return apiRequest("POST", "/api/schedules", values);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/schedules?truckId=${selectedTruckId}`] });
+      toast({
+        title: "Schedule added",
+        description: "Your schedule has been added successfully",
+      });
+      setIsOpen(false);
+      form.reset({ truckId: selectedTruckId, location: "", date: "", startTime: "", endTime: "", notes: "" });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to add schedule. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (scheduleId: number) => {
+      return apiRequest("DELETE", `/api/schedules/${scheduleId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/schedules?truckId=${selectedTruckId}`] });
+      toast({
+        title: "Schedule deleted",
+        description: "Schedule has been removed",
+      });
+    },
+  });
+
+  const onSubmit = (values: z.infer<typeof insertScheduleSchema>) => {
+    createMutation.mutate({ ...values, truckId: selectedTruckId });
+  };
+
+  return (
+    <div className="mb-12">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold font-heading flex items-center gap-2">
+          <MapPin className="h-6 w-6" />
+          Schedule
+        </h2>
+        <div className="flex items-center gap-3">
+          {trucks.length > 1 && (
+            <Select value={selectedTruckId.toString()} onValueChange={(val) => setSelectedTruckId(parseInt(val))}>
+              <SelectTrigger className="w-48" data-testid="select-truck-schedule">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {trucks.map((truck) => (
+                  <SelectItem key={truck.id} value={truck.id.toString()} data-testid={`select-item-truck-${truck.id}`}>
+                    {truck.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-schedule">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Schedule
+              </Button>
+            </DialogTrigger>
+            <DialogContent data-testid="dialog-add-schedule">
+              <DialogHeader>
+                <DialogTitle>Add Schedule</DialogTitle>
+                <DialogDescription>
+                  Let customers know where and when they can find you
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Location</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="123 Main St, Downtown" data-testid="input-schedule-location" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="date" data-testid="input-schedule-date" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="startTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Start Time</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="time" value={field.value || ""} data-testid="input-schedule-start" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="endTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>End Time</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="time" value={field.value || ""} data-testid="input-schedule-end" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="notes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes (Optional)</FormLabel>
+                        <FormControl>
+                          <Textarea {...field} value={field.value || ""} placeholder="Special menu items, parking info, etc." data-testid="input-schedule-notes" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" disabled={createMutation.isPending} className="w-full" data-testid="button-submit-schedule">
+                    {createMutation.isPending ? "Adding..." : "Add Schedule"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+      {schedules && schedules.length > 0 ? (
+        <div className="space-y-3">
+          {schedules.map((schedule) => (
+            <Card key={schedule.id} data-testid={`card-schedule-${schedule.id}`}>
+              <CardContent className="p-4">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1">
+                    <h3 className="font-semibold mb-1">{schedule.location}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {format(new Date(schedule.date), "EEEE, MMMM d, yyyy")}
+                    </p>
+                    {schedule.startTime && schedule.endTime && (
+                      <p className="text-sm text-muted-foreground">
+                        {schedule.startTime} - {schedule.endTime}
+                      </p>
+                    )}
+                    {schedule.notes && (
+                      <p className="text-sm mt-2">{schedule.notes}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => deleteMutation.mutate(schedule.id)}
+                    disabled={deleteMutation.isPending}
+                    data-testid={`button-delete-schedule-${schedule.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <MapPin className="h-16 w-16 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Schedules Yet</h3>
+            <p className="text-muted-foreground text-center">
+              Add your location schedule so customers know where to find you
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// Update Management Component
+function UpdateManagement({ trucks }: { trucks: TruckType[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedTruckId, setSelectedTruckId] = useState<number>(trucks[0]?.id || 0);
+  const { toast } = useToast();
+
+  const form = useForm<z.infer<typeof insertUpdateSchema>>({
+    resolver: zodResolver(insertUpdateSchema),
+    defaultValues: {
+      truckId: selectedTruckId,
+      title: "",
+      content: "",
+    },
+  });
+
+  // Sync form truckId when selectedTruckId changes
+  useEffect(() => {
+    form.setValue("truckId", selectedTruckId);
+  }, [selectedTruckId, form]);
+
+  const { data: updates } = useQuery<Update[]>({
+    queryKey: [`/api/updates?truckId=${selectedTruckId}`],
+    enabled: !!selectedTruckId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof insertUpdateSchema>) => {
+      return apiRequest("POST", "/api/updates", values);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/updates?truckId=${selectedTruckId}`] });
+      toast({
+        title: "Update posted",
+        description: "Your update has been posted successfully",
+      });
+      setIsOpen(false);
+      form.reset({ truckId: selectedTruckId, title: "", content: "" });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to post update. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (updateId: number) => {
+      return apiRequest("DELETE", `/api/updates/${updateId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/updates?truckId=${selectedTruckId}`] });
+      toast({
+        title: "Update deleted",
+        description: "Update has been removed",
+      });
+    },
+  });
+
+  const onSubmit = (values: z.infer<typeof insertUpdateSchema>) => {
+    createMutation.mutate({ ...values, truckId: selectedTruckId });
+  };
+
+  return (
+    <div className="mb-12">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold font-heading flex items-center gap-2">
+          <Megaphone className="h-6 w-6" />
+          Updates & Announcements
+        </h2>
+        <div className="flex items-center gap-3">
+          {trucks.length > 1 && (
+            <Select value={selectedTruckId.toString()} onValueChange={(val) => setSelectedTruckId(parseInt(val))}>
+              <SelectTrigger className="w-48" data-testid="select-truck-update">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {trucks.map((truck) => (
+                  <SelectItem key={truck.id} value={truck.id.toString()} data-testid={`select-item-truck-update-${truck.id}`}>
+                    {truck.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-update">
+                <Plus className="mr-2 h-4 w-4" />
+                Post Update
+              </Button>
+            </DialogTrigger>
+            <DialogContent data-testid="dialog-add-update">
+              <DialogHeader>
+                <DialogTitle>Post Update</DialogTitle>
+                <DialogDescription>
+                  Share news, menu changes, or special announcements with your followers
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Title</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="New menu item, special offer, etc." data-testid="input-update-title" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="content"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Message</FormLabel>
+                        <FormControl>
+                          <Textarea {...field} placeholder="Tell your followers what's new..." rows={4} data-testid="input-update-content" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" disabled={createMutation.isPending} className="w-full" data-testid="button-submit-update">
+                    {createMutation.isPending ? "Posting..." : "Post Update"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+      {updates && updates.length > 0 ? (
+        <div className="space-y-3">
+          {updates.map((update) => (
+            <Card key={update.id} data-testid={`card-update-${update.id}`}>
+              <CardContent className="p-4">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1">
+                    <h3 className="font-semibold mb-1">{update.title}</h3>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {format(new Date(update.createdAt), "MMMM d, yyyy")}
+                    </p>
+                    <p className="text-sm">{update.content}</p>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => deleteMutation.mutate(update.id)}
+                    disabled={deleteMutation.isPending}
+                    data-testid={`button-delete-update-${update.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Megaphone className="h-16 w-16 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Updates Yet</h3>
+            <p className="text-muted-foreground text-center">
+              Post updates to keep your followers informed about news and special offers
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
