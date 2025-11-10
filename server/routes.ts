@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertTruckSchema, insertEventSchema, insertBookingSchema, insertTruckUnavailabilitySchema, subscriptions } from "@shared/schema";
+import { insertTruckSchema, insertEventSchema, insertBookingSchema, insertTruckUnavailabilitySchema, insertUpdateSchema, subscriptions } from "@shared/schema";
 import { z } from "zod";
 import { sendNewBookingNotification, sendBookingAcceptedNotification, sendBookingDeclinedNotification } from "./email";
 import Stripe from "stripe";
@@ -1133,9 +1133,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/updates', isAuthenticated, async (req: any, res) => {
     try {
-      const { truckId, message } = req.body;
+      const parsed = insertUpdateSchema.parse(req.body);
       
-      const update = await storage.createUpdate({ truckId, message });
+      const update = await storage.createUpdate(parsed);
       res.status(201).json(update);
     } catch (error) {
       console.error("Error creating update:", error);

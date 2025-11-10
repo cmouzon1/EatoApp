@@ -285,7 +285,8 @@ export const schedulesRelations = relations(schedules, ({ one }) => ({
 export const updates = pgTable("updates", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   truckId: integer("truck_id").notNull().references(() => trucks.id),
-  message: text("message").notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
