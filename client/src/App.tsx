@@ -10,6 +10,7 @@ import Landing from "@/pages/Landing";
 import BrowseTrucks from "@/pages/BrowseTrucks";
 import BrowseEvents from "@/pages/BrowseEvents";
 import TruckDetail from "@/pages/TruckDetail";
+import NewTruck from "@/pages/NewTruck";
 import EventDetail from "@/pages/EventDetail";
 import TruckDashboard from "@/pages/TruckDashboard";
 import OrganizerDashboard from "@/pages/OrganizerDashboard";
@@ -48,6 +49,7 @@ function Router() {
         </>
       )}
       
+      <Route path="/trucks/new" component={NewTruck} />
       <Route path="/trucks" component={BrowseTrucks} />
       <Route path="/trucks/:id" component={TruckDetail} />
       <Route path="/events" component={BrowseEvents} />

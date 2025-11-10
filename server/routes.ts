@@ -791,7 +791,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const subscription = await storage.getSubscriptionByUserId(userId);
       
       if (!subscription) {
-        return res.json({ status: 'none', tier: 'basic' });
+        return res.json({ status: 'none', tier: 'free' });
       }
 
       res.json({
@@ -801,6 +801,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error('Get subscription status error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Free tier activation (no Stripe required)
+  app.post('/api/subscription/activate-free', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      // Check if subscription already exists
+      const existing = await storage.getSubscriptionByUserId(userId);
+      
+      // If already has active free tier, return success (idempotent)
+      if (existing && existing.tier === 'free' && existing.status === 'active') {
+        return res.json({
+          status: existing.status,
+          tier: existing.tier,
+          currentPeriodEnd: existing.currentPeriodEnd,
+        });
+      }
+
+      // If has active paid subscription, don't downgrade
+      if (existing && existing.status === 'active' && existing.tier !== 'free') {
+        return res.status(400).json({ error: 'Active paid subscription already exists' });
+      }
+
+      // Create or update to free tier subscription
+      const subscription = await storage.upsertSubscription({
+        userId,
+        tier: 'free',
+        status: 'active',
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        currentPeriodEnd: null,
+      });
+
+      res.json({
+        status: subscription.status,
+        tier: subscription.tier,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      });
+    } catch (error: any) {
+      console.error('Activate free tier error:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -854,8 +897,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const sub = event.data.object as Stripe.Subscription;
           const customerId = sub.customer as string;
           const subStatus = sub.status;
-          const currentPeriodEnd = sub.current_period_end 
-            ? new Date(sub.current_period_end * 1000) 
+          const currentPeriodEnd = (sub as any).current_period_end 
+            ? new Date((sub as any).current_period_end * 1000) 
             : null;
 
           // Find subscription by Stripe customer ID

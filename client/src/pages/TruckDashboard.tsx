@@ -17,6 +17,12 @@ import {
   insertUpdateSchema,
   insertApplicationSchema 
 } from "@shared/schema";
+import { z } from "zod";
+
+// Extended schema for schedule form to accept string dates from HTML input
+const scheduleFormSchema = insertScheduleSchema.extend({
+  date: z.coerce.date(),
+});
 import { TruckCard } from "@/components/TruckCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +37,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Truck, Plus, Calendar, DollarSign, CheckCircle, Crown, Sparkles, BarChart3, Heart, Users, Bell, Megaphone, MapPin, Trash2, Mail, Send, X, Check } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { z } from "zod";
 
 export default function TruckDashboard() {
   const { user, isAuthenticated, isLoading, isTruckOwner, subscription } = useAuth();
@@ -310,14 +315,14 @@ function ScheduleManagement({ trucks }: { trucks: TruckType[] }) {
   const [selectedTruckId, setSelectedTruckId] = useState<number>(trucks[0]?.id || 0);
   const { toast } = useToast();
 
-  const form = useForm<z.infer<typeof insertScheduleSchema>>({
-    resolver: zodResolver(insertScheduleSchema),
+  const form = useForm<z.infer<typeof scheduleFormSchema>>({
+    resolver: zodResolver(scheduleFormSchema),
     defaultValues: {
       truckId: selectedTruckId,
       location: "",
-      date: "",
-      startTime: "",
-      endTime: "",
+      date: new Date().toISOString().split('T')[0] as any, // Today's date in YYYY-MM-DD format
+      startTime: "09:00",
+      endTime: "17:00",
       notes: "",
     },
   });
@@ -333,7 +338,7 @@ function ScheduleManagement({ trucks }: { trucks: TruckType[] }) {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (values: z.infer<typeof insertScheduleSchema>) => {
+    mutationFn: async (values: z.infer<typeof scheduleFormSchema>) => {
       return apiRequest("POST", "/api/schedules", values);
     },
     onSuccess: () => {

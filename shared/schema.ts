@@ -43,7 +43,7 @@ export const users = pgTable("users", {
 export const subscriptions = pgTable("subscriptions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   userId: varchar("user_id").notNull().unique().references(() => users.id),
-  tier: varchar("tier", { enum: ["basic", "pro"] }).notNull().default("basic"),
+  tier: varchar("tier", { enum: ["free", "basic", "pro"] }).notNull().default("free"),
   status: varchar("status", { 
     enum: ["active", "canceled", "past_due", "incomplete", "trialing", "none"] 
   }).notNull().default("none"),

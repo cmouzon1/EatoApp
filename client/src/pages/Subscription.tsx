@@ -98,6 +98,43 @@ export default function Subscription() {
     createCheckoutMutation.mutate(tier);
   };
 
+  const activateFreeMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/subscription/activate-free", {});
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to activate free tier");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/subscription/status'] });
+      toast({
+        title: "Free tier activated",
+        description: "You can now use Eato for free!",
+      });
+      // Redirect to appropriate dashboard based on user role
+      const role = user?.userRole || 'user';
+      const dashboardPath = role === 'truck_owner' 
+        ? '/dashboard/truck' 
+        : role === 'event_organizer' 
+        ? '/dashboard/organizer' 
+        : '/trucks';
+      window.location.href = dashboardPath;
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to activate free tier",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleContinueFree = () => {
+    activateFreeMutation.mutate();
+  };
+
   if (authLoading || isLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -135,6 +172,55 @@ export default function Subscription() {
             <p className="text-green-700 dark:text-green-300">
               You are currently subscribed to the <strong>{currentTier}</strong> plan
             </p>
+          </div>
+        )}
+
+        {/* Free Tier Option */}
+        {!isActive && (
+          <Card className="border-2 border-primary">
+            <CardContent className="p-6">
+              <div className="text-center space-y-4">
+                <div>
+                  <h3 className="text-2xl font-bold mb-2">Continue with Free Tier</h3>
+                  <p className="text-muted-foreground">
+                    Start using Eato for free! Upgrade anytime to unlock premium features.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleContinueFree}
+                  disabled={activateFreeMutation.isPending}
+                  size="lg"
+                  className="w-full max-w-md mx-auto"
+                  data-testid="button-continue-free"
+                >
+                  {activateFreeMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Activating...
+                    </>
+                  ) : (
+                    'Continue with Free'
+                  )}
+                </Button>
+                <p className="text-sm text-muted-foreground">
+                  No credit card required • Upgrade anytime
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Divider */}
+        {!isActive && (
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-background px-4 text-muted-foreground">
+                Or choose a premium plan
+              </span>
+            </div>
           </div>
         )}
 
