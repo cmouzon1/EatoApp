@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Menu, Truck, Calendar, User, LogOut, Crown } from "lucide-react";
+import { Menu, Truck, Calendar, User, LogOut, Crown, Wrench } from "lucide-react";
 import { useState } from "react";
 
 type SubscriptionStatus = {
@@ -131,6 +131,12 @@ export function Header() {
                     <DropdownMenuItem data-testid="link-subscription">
                       <Crown className="mr-2 h-4 w-4" />
                       Subscription
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/dev-tools">
+                    <DropdownMenuItem data-testid="link-dev-tools">
+                      <Wrench className="mr-2 h-4 w-4" />
+                      Dev Tools
                     </DropdownMenuItem>
                   </Link>
                   <DropdownMenuSeparator />

@@ -19,6 +19,7 @@ import PaymentCheckout from "@/pages/PaymentCheckout";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import Subscription from "@/pages/Subscription";
 import SubscriptionSuccess from "@/pages/SubscriptionSuccess";
+import DevTools from "@/pages/DevTools";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -61,6 +62,7 @@ function Router() {
       <Route path="/payment-success" component={PaymentSuccess} />
       <Route path="/subscription" component={Subscription} />
       <Route path="/subscription-success" component={SubscriptionSuccess} />
+      <Route path="/dev-tools" component={DevTools} />
       
       <Route component={NotFound} />
     </Switch>

@@ -1,0 +1,63 @@
+Enhance Create tab quickly:
+
+In /client/src/App.jsx, inside CreateView(), after existing forms, append two minimal helpers:
+
+// USER quick actions (favorites/follows)
+function UserQuickActions() {
+  const [truckId, setTruckId] = React.useState('')
+  const email = localStorage.getItem('email') || ''
+  async function fav() {
+    await api('/api/favorites', { method:'POST', body:{ email, truck_id: Number(truckId) }})
+    alert('Favorited')
+  }
+  async function follow() {
+    await api('/api/follows', { method:'POST', body:{ email, truck_id: Number(truckId), alerts_enabled: 1 }})
+    alert('Followed with alerts ON')
+  }
+  return (
+    <div style={{display:'grid', gap:6}}>
+      <h3>User quick actions</h3>
+      <input placeholder="Truck ID" value={truckId} onChange={e=>setTruckId(e.target.value)} />
+      <div>
+        <button onClick={fav}>Add Favorite</button>
+        <button onClick={follow} style={{marginLeft:8}}>Follow + Alerts</button>
+      </div>
+    </div>
+  )
+}
+
+// TRUCK quick actions (schedules + updates)
+function TruckQuickActions({ truckId }) {
+  const [form, setForm] = React.useState({})
+  const [msg, setMsg] = React.useState('')
+  const onChange = e => setForm(p => ({...p, [e.target.name]: e.target.value}))
+  async function addSchedule() {
+    await api('/api/schedules', { method:'POST', body:{ ...form, truck_id: Number(truckId) }})
+    alert('Schedule added')
+  }
+  async function postUpdate() {
+    await api('/api/updates', { method:'POST', body:{ truck_id: Number(truckId), message: msg }})
+    alert('Update posted')
+  }
+  return (
+    <div style={{display:'grid', gap:6}}>
+      <h3>Truck quick actions</h3>
+      <input name="title" placeholder="Title" onChange={onChange} />
+      <input name="date" placeholder="YYYY-MM-DD" onChange={onChange} />
+      <input name="start_time" placeholder="HH:MM" onChange={onChange} />
+      <input name="end_time" placeholder="HH:MM" onChange={onChange} />
+      <input name="lat" placeholder="Lat" onChange={onChange} />
+      <input name="lng" placeholder="Lng" onChange={onChange} />
+      <input name="note" placeholder="Note" onChange={onChange} />
+      <button onClick={addSchedule}>Add Schedule</button>
+      <textarea placeholder="Update message" value={msg} onChange={e=>setMsg(e.target.value)} />
+      <button onClick={postUpdate}>Post Update</button>
+    </div>
+  )
+}
+
+// inside CreateView() JSX, after existing forms:
+<hr/>
+<UserQuickActions/>
+<hr/>
+{form.truck_id && <TruckQuickActions truckId={form.truck_id} />}
