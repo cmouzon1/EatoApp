@@ -227,8 +227,8 @@ export const applicationsRelations = relations(applications, ({ one }) => ({
 }));
 
 // Zod schemas for validation
+// Note: id is NOT omitted for users since OIDC provides a sub claim that becomes the user id
 export const insertUserSchema = createInsertSchema(users).omit({
-  id: true as const,
   createdAt: true as const,
   updatedAt: true as const,
 });

@@ -10,10 +10,11 @@ import {
   insertInviteSchema,
   insertApplicationSchema,
   users,
+  type User,
 } from "@shared/schema";
 import { z } from "zod";
 import Stripe from "stripe";
-import { db } from "./db";
+import { db, type Db } from "./db";
 import { eq } from "drizzle-orm";
 
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -23,13 +24,39 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-10-29.clover" })
   : null;
 
+// Helper to find or create user by email
+export async function getOrCreateUserByEmail(database: Db, email: string): Promise<User> {
+  const [existingUser] = await database
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  
+  if (existingUser) {
+    return existingUser;
+  }
+  
+  // Create new user with defaults
+  const [newUser] = await database
+    .insert(users)
+    .values({
+      email,
+      role: "user",
+      subscriptionTier: "free",
+      subscriptionStatus: "none",
+    })
+    .returning();
+  
+  return newUser;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
 
   // ===== AUTH ROUTES =====
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       if (!user) {
@@ -51,7 +78,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== PROFILE ROUTES =====
   app.patch('/api/profile', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -100,7 +127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/trucks/my-trucks', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const trucks = await storage.getTrucksByOwner(userId);
       res.json(trucks);
     } catch (error) {
@@ -128,7 +155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/trucks', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const parsed = insertTruckSchema.parse({ ...req.body, ownerUserId: userId });
       const truck = await storage.createTruck(parsed);
       res.status(201).json(truck);
@@ -153,7 +180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Truck not found" });
       }
       
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       if (truck.ownerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to update this truck" });
       }
@@ -178,7 +205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Truck not found" });
       }
       
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       if (truck.ownerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to delete this truck" });
       }
@@ -204,7 +231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/events/my-events', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const events = await storage.getEventsByOrganizer(userId);
       res.json(events);
     } catch (error) {
@@ -232,7 +259,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/events', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const parsed = insertEventSchema.parse({ ...req.body, organizerUserId: userId });
       const event = await storage.createEvent(parsed);
       res.status(201).json(event);
@@ -257,7 +284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Event not found" });
       }
       
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       if (event.organizerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to update this event" });
       }
@@ -282,7 +309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Event not found" });
       }
       
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       if (event.organizerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to delete this event" });
       }
@@ -298,7 +325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== FAVORITES ROUTES =====
   app.get('/api/favorites', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const favorites = await storage.getFavoritesByUser(userId);
       res.json(favorites);
     } catch (error) {
@@ -309,7 +336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/favorites', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { truckId } = req.body;
       
       const existing = await storage.checkFavorite(userId, truckId);
@@ -342,7 +369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== FOLLOWS ROUTES =====
   app.get('/api/follows', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const follows = await storage.getFollowsByUser(userId);
       res.json(follows);
     } catch (error) {
@@ -353,7 +380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/follows', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const { truckId, alertsEnabled = false } = req.body;
       
       const existing = await storage.checkFollow(userId, truckId);
@@ -610,7 +637,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: 'Stripe not configured' });
       }
 
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       if (!user || !user.email) {
@@ -667,7 +694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/subscription/status', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       if (!user) {
@@ -687,7 +714,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/subscription/activate-free', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.id;
       const user = await storage.getUser(userId);
       
       if (!user) {

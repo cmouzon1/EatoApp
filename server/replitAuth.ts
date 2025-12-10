@@ -50,16 +50,33 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
-async function upsertUser(
-  claims: any,
-) {
-  await storage.upsertUser({
-    id: claims["sub"],
-    email: claims["email"],
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
-    profileImageUrl: claims["profile_image_url"],
-  });
+async function upsertUser(claims: any) {
+  const email = claims["email"];
+  const id = claims["sub"];
+  
+  // Check if user exists
+  let user = await storage.getUser(id);
+  
+  if (!user) {
+    // Try to find by email
+    user = await storage.getUserByEmail(email);
+    
+    if (!user) {
+      // Create new user with defaults
+      const name = [claims["first_name"], claims["last_name"]].filter(Boolean).join(" ") || null;
+      await storage.createUser({
+        id,
+        email,
+        name,
+        role: "user",
+        subscriptionTier: "free",
+        subscriptionStatus: "none",
+      });
+    } else {
+      // Update existing user's ID if found by email
+      await storage.updateUser(user.id, { id });
+    }
+  }
 }
 
 export async function setupAuth(app: Express) {
@@ -74,9 +91,16 @@ export async function setupAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const user = {};
+    const claims = tokens.claims();
+    if (!claims) {
+      return verified(new Error("No claims found in token"), undefined);
+    }
+    const user: any = {
+      id: claims["sub"],
+      email: claims["email"],
+    };
     updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
+    await upsertUser(claims);
     verified(null, user);
   };
 
