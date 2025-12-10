@@ -1188,7 +1188,333 @@ export function applyRoutes(app: Express): Server {
     }
   });
 
-  // ===== SUBSCRIPTION ROUTES =====
+  // ===== BILLING & SUBSCRIPTION ROUTES =====
+  
+  // Helper to get app base URL
+  const getAppUrl = () => {
+    if (process.env.REPLIT_DEPLOYMENT) {
+      const domains = process.env.REPLIT_DOMAINS?.split(',');
+      return `https://${domains?.[0] || process.env.REPLIT_DEV_DOMAIN}`;
+    }
+    if (process.env.REPLIT_DEV_DOMAIN) {
+      return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+    }
+    return 'http://localhost:5000';
+  };
+
+  // Price ID lookup map
+  const getPriceId = (role: string, tier: string): string | undefined => {
+    const priceMap: Record<string, string | undefined> = {
+      'user_basic': process.env.STRIPE_PRICE_USER_BASIC,
+      'user_pro': process.env.STRIPE_PRICE_USER_PRO,
+      'truck_basic': process.env.STRIPE_PRICE_TRUCK_BASIC,
+      'truck_pro': process.env.STRIPE_PRICE_TRUCK_PRO,
+      'org_basic': process.env.STRIPE_PRICE_ORG_BASIC,
+      'org_pro': process.env.STRIPE_PRICE_ORG_PRO,
+    };
+    return priceMap[`${role}_${tier}`];
+  };
+
+  // POST /api/billing/create-checkout-session
+  // Body: { role: "user" | "truck" | "org", tier: "basic" | "pro" }
+  app.post('/api/billing/create-checkout-session', isAuthenticated, async (req: any, res) => {
+    try {
+      if (!stripe) {
+        return res.status(500).json({ error: 'Stripe is not configured' });
+      }
+
+      const userId = req.user.id;
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      if (!user.email) {
+        return res.status(400).json({ error: 'User email is required for billing' });
+      }
+
+      // Validate request body
+      const bodySchema = z.object({
+        role: z.enum(["user", "truck", "org"]),
+        tier: z.enum(["basic", "pro"]),
+      });
+
+      const parseResult = bodySchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: 'Invalid request body', 
+          details: parseResult.error.errors 
+        });
+      }
+
+      const { role, tier } = parseResult.data;
+
+      // Look up the correct Price ID from environment variables
+      const priceId = getPriceId(role, tier);
+      if (!priceId) {
+        return res.status(500).json({ 
+          error: `Subscription pricing not configured for ${role} ${tier} plan` 
+        });
+      }
+
+      const APP_URL = getAppUrl();
+
+      // Create Stripe Checkout Session
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        customer_email: user.email,
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: `${APP_URL}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${APP_URL}/subscription`,
+        metadata: { 
+          role, 
+          tier, 
+          userId,
+        },
+        subscription_data: {
+          metadata: {
+            role,
+            tier,
+            userId,
+          },
+        },
+      });
+
+      res.json({ url: session.url });
+    } catch (error: any) {
+      console.error('Create checkout session error:', error);
+      res.status(500).json({ error: error.message || 'Failed to create checkout session' });
+    }
+  });
+
+  // GET /api/subscription/status - Get current user's subscription status
+  app.get('/api/subscription/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      res.json({
+        status: user.subscriptionStatus || 'none',
+        tier: user.subscriptionTier || 'free',
+        role: user.subscriptionRole || user.role,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+      });
+    } catch (error: any) {
+      console.error('Get subscription status error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/subscription/activate-free - Activate free tier for user
+  app.post('/api/subscription/activate-free', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Don't allow downgrade from paid subscription
+      if (user.subscriptionStatus === 'active' && user.subscriptionTier !== 'free') {
+        return res.status(400).json({ 
+          error: 'Cannot activate free tier while on active paid subscription. Please cancel first.' 
+        });
+      }
+
+      const [updatedUser] = await db
+        .update(users)
+        .set({
+          subscriptionTier: 'free',
+          subscriptionStatus: 'active',
+          subscriptionRole: user.role,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, userId))
+        .returning();
+
+      res.json({
+        status: updatedUser?.subscriptionStatus,
+        tier: updatedUser?.subscriptionTier,
+        role: updatedUser?.subscriptionRole,
+      });
+    } catch (error: any) {
+      console.error('Activate free tier error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/subscription/webhook - Stripe webhook handler
+  app.post('/api/subscription/webhook', async (req, res) => {
+    if (!stripe) {
+      console.error('Stripe webhook received but Stripe is not configured');
+      return res.status(500).json({ error: 'Stripe not configured' });
+    }
+
+    const sig = req.headers['stripe-signature'] as string;
+    const webhookSecret = process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET;
+    
+    let event: Stripe.Event;
+
+    try {
+      // Verify webhook signature in production
+      if (webhookSecret && sig) {
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      } else {
+        // Development mode - parse raw body
+        console.warn('Stripe webhook signature not verified (development mode)');
+        event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      }
+
+      console.log(`Processing Stripe webhook event: ${event.type}`);
+
+      switch (event.type) {
+        // Handle checkout session completion
+        case 'checkout.session.completed': {
+          const session = event.data.object as Stripe.Checkout.Session;
+          const { userId, role, tier } = session.metadata || {};
+
+          if (!userId) {
+            console.error('checkout.session.completed: Missing userId in metadata');
+            break;
+          }
+
+          console.log(`Checkout completed for user ${userId}: role=${role}, tier=${tier}`);
+
+          // Attach stripeCustomerId and update subscription info
+          await db
+            .update(users)
+            .set({
+              stripeCustomerId: session.customer as string,
+              stripeSubscriptionId: session.subscription as string,
+              subscriptionTier: (tier as "free" | "basic" | "pro") || 'basic',
+              subscriptionRole: (role as "user" | "truck" | "org") || undefined,
+              subscriptionStatus: 'active',
+              updatedAt: new Date(),
+            })
+            .where(eq(users.id, userId));
+          
+          console.log(`User ${userId} subscription activated: ${role} ${tier}`);
+          break;
+        }
+
+        // Handle subscription created
+        case 'customer.subscription.created': {
+          const subscription = event.data.object as Stripe.Subscription;
+          const customerId = subscription.customer as string;
+          const { userId, role, tier } = subscription.metadata || {};
+
+          console.log(`Subscription created for customer ${customerId}`);
+
+          // Find user by stripeCustomerId or userId in metadata
+          const whereClause = userId 
+            ? eq(users.id, userId)
+            : eq(users.stripeCustomerId, customerId);
+
+          await db
+            .update(users)
+            .set({
+              stripeSubscriptionId: subscription.id,
+              subscriptionStatus: subscription.status === 'active' ? 'active' : 'none',
+              subscriptionTier: (tier as "free" | "basic" | "pro") || undefined,
+              subscriptionRole: (role as "user" | "truck" | "org") || undefined,
+              updatedAt: new Date(),
+            })
+            .where(whereClause);
+          break;
+        }
+
+        // Handle subscription updated
+        case 'customer.subscription.updated': {
+          const subscription = event.data.object as Stripe.Subscription;
+          const customerId = subscription.customer as string;
+          const { role, tier } = subscription.metadata || {};
+
+          console.log(`Subscription updated for customer ${customerId}: status=${subscription.status}`);
+
+          // Map Stripe status to our status
+          let subscriptionStatus: "none" | "active" | "past_due" | "canceled" = 'none';
+          switch (subscription.status) {
+            case 'active':
+            case 'trialing':
+              subscriptionStatus = 'active';
+              break;
+            case 'past_due':
+              subscriptionStatus = 'past_due';
+              break;
+            case 'canceled':
+            case 'unpaid':
+            case 'incomplete_expired':
+              subscriptionStatus = 'canceled';
+              break;
+            default:
+              subscriptionStatus = 'none';
+          }
+
+          const updateData: Record<string, any> = {
+            stripeSubscriptionId: subscription.id,
+            subscriptionStatus,
+            updatedAt: new Date(),
+          };
+
+          // Update tier/role if present in metadata
+          if (tier) updateData.subscriptionTier = tier;
+          if (role) updateData.subscriptionRole = role;
+
+          await db
+            .update(users)
+            .set(updateData)
+            .where(eq(users.stripeCustomerId, customerId));
+          break;
+        }
+
+        // Handle subscription deleted/canceled
+        case 'customer.subscription.deleted': {
+          const subscription = event.data.object as Stripe.Subscription;
+          const customerId = subscription.customer as string;
+
+          console.log(`Subscription deleted for customer ${customerId}`);
+
+          await db
+            .update(users)
+            .set({
+              subscriptionStatus: 'canceled',
+              updatedAt: new Date(),
+            })
+            .where(eq(users.stripeCustomerId, customerId));
+          break;
+        }
+
+        default:
+          console.log(`Unhandled Stripe event type: ${event.type}`);
+      }
+
+      res.json({ received: true });
+    } catch (err: any) {
+      console.error('Stripe webhook error:', err.message);
+      res.status(400).json({ error: `Webhook Error: ${err.message}` });
+    }
+  });
+
+  // Legacy endpoint for backward compatibility
   app.post('/api/subscription/create-checkout-session', isAuthenticated, async (req: any, res) => {
     try {
       if (!stripe) {
@@ -1207,168 +1533,39 @@ export function applyRoutes(app: Express): Server {
       }
 
       const { tier = 'basic' } = req.body || {};
-      
+      const role = user.role;
+
+      if (!role) {
+        return res.status(400).json({ error: 'User role not set' });
+      }
+
       if (!['basic', 'pro'].includes(tier)) {
         return res.status(400).json({ error: 'Invalid tier' });
       }
 
-      if (!user.role) {
-        return res.status(400).json({ error: 'User role not set' });
-      }
-
-      const priceMap: Record<string, string | undefined> = {
-        'truck_basic': process.env.STRIPE_PRICE_TRUCK_BASIC,
-        'truck_pro': process.env.STRIPE_PRICE_TRUCK_PRO,
-        'org_basic': process.env.STRIPE_PRICE_ORG_BASIC,
-        'org_pro': process.env.STRIPE_PRICE_ORG_PRO,
-        'user_basic': process.env.STRIPE_PRICE_USER_BASIC,
-        'user_pro': process.env.STRIPE_PRICE_USER_PRO,
-      };
-
-      const priceKey = `${user.role}_${tier}`;
-      const priceId = priceMap[priceKey];
-
+      const priceId = getPriceId(role, tier);
       if (!priceId) {
-        return res.status(500).json({ error: `Subscription pricing not configured for ${user.role} ${tier} plan` });
+        return res.status(500).json({ error: `Subscription pricing not configured for ${role} ${tier} plan` });
       }
 
-      const baseUrl = process.env.REPLIT_DEPLOYMENT 
-        ? `https://${process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPLIT_DEV_DOMAIN 
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : 'http://localhost:5000';
+      const APP_URL = getAppUrl();
 
       const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         customer_email: user.email,
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${baseUrl}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/subscription`,
-        metadata: { tier, userId, role: user.role },
+        success_url: `${APP_URL}/subscription-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${APP_URL}/subscription`,
+        metadata: { tier, userId, role },
+        subscription_data: {
+          metadata: { tier, userId, role },
+        },
       });
 
       res.json({ id: session.id, url: session.url });
     } catch (error: any) {
       console.error('Create checkout session error:', error);
       res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get('/api/subscription/status', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.id;
-      const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-      
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      res.json({
-        status: user.subscriptionStatus || 'none',
-        tier: user.subscriptionTier || 'free',
-        role: user.subscriptionRole,
-      });
-    } catch (error: any) {
-      console.error('Get subscription status error:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post('/api/subscription/activate-free', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.id;
-      const [user] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-      
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      if (user.subscriptionStatus === 'active' && user.subscriptionTier !== 'free') {
-        return res.status(400).json({ error: 'Active paid subscription already exists' });
-      }
-
-      const [updatedUser] = await db
-        .update(users)
-        .set({
-          subscriptionTier: 'free',
-          subscriptionStatus: 'active',
-          subscriptionRole: user.role,
-        })
-        .where(eq(users.id, userId))
-        .returning();
-
-      res.json({
-        status: updatedUser?.subscriptionStatus,
-        tier: updatedUser?.subscriptionTier,
-        role: updatedUser?.subscriptionRole,
-      });
-    } catch (error: any) {
-      console.error('Activate free tier error:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post('/api/subscription/webhook', async (req, res) => {
-    if (!stripe) {
-      return res.status(500).json({ error: 'Stripe not configured' });
-    }
-
-    const sig = req.headers['stripe-signature'] as string;
-    let event: Stripe.Event;
-
-    try {
-      const webhookSecret = process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET;
-      
-      if (webhookSecret && sig) {
-        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-      } else {
-        event = req.body;
-      }
-
-      switch (event.type) {
-        case 'checkout.session.completed':
-          const session = event.data.object as Stripe.Checkout.Session;
-          const userId = session.metadata?.userId;
-          const tier = session.metadata?.tier || 'basic';
-          const role = session.metadata?.role;
-
-          if (userId) {
-            await db
-              .update(users)
-              .set({
-                subscriptionTier: tier as "free" | "basic" | "pro",
-                subscriptionStatus: 'active',
-                subscriptionRole: role as "user" | "truck" | "org",
-                stripeCustomerId: session.customer as string,
-                stripeSubscriptionId: session.subscription as string,
-              })
-              .where(eq(users.id, userId));
-          }
-          break;
-
-        case 'customer.subscription.deleted':
-          const deletedSub = event.data.object as Stripe.Subscription;
-          const deletedCustId = deletedSub.customer as string;
-
-          await db
-            .update(users)
-            .set({ subscriptionStatus: 'canceled' })
-            .where(eq(users.stripeCustomerId, deletedCustId));
-          break;
-      }
-
-      res.json({ received: true });
-    } catch (err: any) {
-      console.error('Subscription webhook error:', err.message);
-      res.status(400).send(`Webhook Error: ${err.message}`);
     }
   });
 
