@@ -174,26 +174,26 @@ export const insertUserSchema = createInsertSchema(users);
 export const selectUserSchema = createSelectSchema(users);
 
 export const insertTruckSchema = createInsertSchema(trucks).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as const,
+  createdAt: true as const,
+  updatedAt: true as const,
 });
 
 export const insertEventSchema = createInsertSchema(events).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as const,
+  createdAt: true as const,
+  updatedAt: true as const,
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as const,
+  createdAt: true as const,
+  updatedAt: true as const,
 });
 
 export const insertTruckUnavailabilitySchema = createInsertSchema(truckUnavailability).omit({
-  id: true,
-  createdAt: true,
+  id: true as const,
+  createdAt: true as const,
 });
 
 // TypeScript types
@@ -214,9 +214,9 @@ export type TruckUnavailability = typeof truckUnavailability.$inferSelect;
 export type InsertTruckUnavailability = z.infer<typeof insertTruckUnavailabilitySchema>;
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+  id: true as const,
+  createdAt: true as const,
+  updatedAt: true as const,
 });
 export type Subscription = typeof subscriptions.$inferSelect;
 export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
@@ -340,43 +340,43 @@ export const applicationsRelations = relations(applications, ({ one }) => ({
 
 // Insert schemas and types for new tables
 export const insertFavoriteSchema = createInsertSchema(favorites).omit({
-  id: true,
-  createdAt: true,
+  id: true as const,
+  createdAt: true as const,
 });
 export type Favorite = typeof favorites.$inferSelect;
 export type InsertFavorite = z.infer<typeof insertFavoriteSchema>;
 
 export const insertFollowSchema = createInsertSchema(follows).omit({
-  id: true,
-  createdAt: true,
+  id: true as const,
+  createdAt: true as const,
 });
 export type Follow = typeof follows.$inferSelect;
 export type InsertFollow = z.infer<typeof insertFollowSchema>;
 
 export const insertScheduleSchema = createInsertSchema(schedules).omit({
-  id: true,
-  createdAt: true,
+  id: true as const,
+  createdAt: true as const,
 });
 export type Schedule = typeof schedules.$inferSelect;
 export type InsertSchedule = z.infer<typeof insertScheduleSchema>;
 
 export const insertUpdateSchema = createInsertSchema(updates).omit({
-  id: true,
-  createdAt: true,
+  id: true as const,
+  createdAt: true as const,
 });
 export type Update = typeof updates.$inferSelect;
 export type InsertUpdate = z.infer<typeof insertUpdateSchema>;
 
 export const insertInviteSchema = createInsertSchema(invites).omit({
-  id: true,
-  createdAt: true,
+  id: true as const,
+  createdAt: true as const,
 });
 export type Invite = typeof invites.$inferSelect;
 export type InsertInvite = z.infer<typeof insertInviteSchema>;
 
 export const insertApplicationSchema = createInsertSchema(applications).omit({
-  id: true,
-  createdAt: true,
+  id: true as const,
+  createdAt: true as const,
 });
 export type Application = typeof applications.$inferSelect;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
