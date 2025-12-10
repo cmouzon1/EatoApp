@@ -62,6 +62,92 @@ export async function getOrCreateUserByEmail(database: Db, email: string): Promi
   return newUser;
 }
 
+// ===== ROLE & SUBSCRIPTION HELPERS =====
+
+type UserRole = "user" | "truck" | "org";
+type SubscriptionTier = "free" | "basic" | "pro";
+
+// Check if user has one of the allowed roles
+export function requireRole(user: User, allowed: UserRole[]): { ok: true } | { ok: false; error: string } {
+  const userRole = user.role;
+  if (!userRole || !allowed.includes(userRole as UserRole)) {
+    return { 
+      ok: false, 
+      error: `This action requires one of the following roles: ${allowed.join(", ")}. Your role: ${userRole || "none"}` 
+    };
+  }
+  return { ok: true };
+}
+
+// Check if user has an active subscription with at least the minimum tier for the given role
+export function requireActiveSubscription(
+  user: User, 
+  role: "truck" | "org", 
+  minTier: "basic" | "pro"
+): { ok: true } | { ok: false; error: string } {
+  const tierOrder: Record<SubscriptionTier, number> = { free: 0, basic: 1, pro: 2 };
+  
+  // Check subscription status
+  if (user.subscriptionStatus !== "active") {
+    return { 
+      ok: false, 
+      error: `This feature requires an active ${minTier} subscription` 
+    };
+  }
+  
+  // Check subscription role matches
+  const subRole = user.subscriptionRole || user.role;
+  if (subRole !== role) {
+    return { 
+      ok: false, 
+      error: `This feature requires a ${role} subscription` 
+    };
+  }
+  
+  // Check tier level
+  const currentTier = user.subscriptionTier || "free";
+  if (tierOrder[currentTier as SubscriptionTier] < tierOrder[minTier]) {
+    return { 
+      ok: false, 
+      error: `This feature requires at least a ${minTier} subscription. Your tier: ${currentTier}` 
+    };
+  }
+  
+  return { ok: true };
+}
+
+// Check if user can create more items (for limits on free/basic tiers)
+export async function checkItemLimit(
+  user: User,
+  itemType: "trucks" | "events" | "schedules",
+  currentCount: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const tier = user.subscriptionTier || "free";
+  
+  // Pro users have unlimited
+  if (tier === "pro") {
+    return { ok: true };
+  }
+  
+  // Define limits per tier
+  const limits: Record<string, Record<SubscriptionTier, number>> = {
+    trucks: { free: 1, basic: 3, pro: Infinity },
+    events: { free: 2, basic: 5, pro: Infinity },
+    schedules: { free: 5, basic: 20, pro: Infinity },
+  };
+  
+  const limit = limits[itemType]?.[tier as SubscriptionTier] ?? 0;
+  
+  if (currentCount >= limit) {
+    return { 
+      ok: false, 
+      error: `You've reached the ${itemType} limit (${limit}) for your ${tier} plan. Upgrade to create more.` 
+    };
+  }
+  
+  return { ok: true };
+}
+
 // Main routes function
 export function applyRoutes(app: Express): Server {
 
@@ -243,10 +329,39 @@ export function applyRoutes(app: Express): Server {
     }
   });
 
-  // POST /api/trucks – create truck for current user
+  // POST /api/trucks – create truck for current user (requires "truck" role)
   app.post('/api/trucks', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
+      
+      // Get user to check role and subscription
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Require "truck" role
+      const roleCheck = requireRole(user, ["truck"]);
+      if (!roleCheck.ok) {
+        return res.status(403).json({ message: roleCheck.error });
+      }
+      
+      // Check truck limit based on subscription tier
+      const [truckCount] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(trucks)
+        .where(eq(trucks.ownerUserId, userId));
+      
+      const limitCheck = await checkItemLimit(user, "trucks", truckCount?.count || 0);
+      if (!limitCheck.ok) {
+        return res.status(403).json({ message: limitCheck.error });
+      }
+      
       const parsed = insertTruckSchema.parse({ ...req.body, ownerUserId: userId }) as InsertTruck;
       const [truck] = await db
         .insert(trucks)
@@ -433,10 +548,39 @@ export function applyRoutes(app: Express): Server {
     }
   });
 
-  // POST /api/events – create event for current organizer
+  // POST /api/events – create event for current organizer (requires "org" role)
   app.post('/api/events', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
+      
+      // Get user to check role and subscription
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Require "org" role
+      const roleCheck = requireRole(user, ["org"]);
+      if (!roleCheck.ok) {
+        return res.status(403).json({ message: roleCheck.error });
+      }
+      
+      // Check event limit based on subscription tier
+      const [eventCount] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(events)
+        .where(eq(events.organizerUserId, userId));
+      
+      const limitCheck = await checkItemLimit(user, "events", eventCount?.count || 0);
+      if (!limitCheck.ok) {
+        return res.status(403).json({ message: limitCheck.error });
+      }
+      
       const parsed = insertEventSchema.parse({ ...req.body, organizerUserId: userId }) as InsertEvent;
       const [event] = await db
         .insert(events)
@@ -776,11 +920,28 @@ export function applyRoutes(app: Express): Server {
     }
   });
 
-  // POST /api/schedules – create schedule for a truck the user owns
+  // POST /api/schedules – create schedule for a truck the user owns (requires "truck" role + schedule limits)
   app.post('/api/schedules', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
       const parsed = insertScheduleSchema.parse(req.body) as InsertSchedule;
+      
+      // Get user to check role and subscription
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Require "truck" role
+      const roleCheck = requireRole(user, ["truck"]);
+      if (!roleCheck.ok) {
+        return res.status(403).json({ message: roleCheck.error });
+      }
       
       // Verify user owns the truck
       const [truck] = await db
@@ -795,6 +956,17 @@ export function applyRoutes(app: Express): Server {
       
       if (truck.ownerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to create schedule for this truck" });
+      }
+      
+      // Check schedule limit based on subscription tier (unlimited for pro)
+      const [scheduleCount] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schedules)
+        .where(eq(schedules.truckId, parsed.truckId));
+      
+      const limitCheck = await checkItemLimit(user, "schedules", scheduleCount?.count || 0);
+      if (!limitCheck.ok) {
+        return res.status(403).json({ message: limitCheck.error });
       }
       
       const [schedule] = await db
