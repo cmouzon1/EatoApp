@@ -191,7 +191,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTruck(truckData: InsertTruck): Promise<Truck> {
-    const [truck] = await db.insert(trucks).values(truckData).returning();
+    const [truck] = await db.insert(trucks).values(truckData as typeof trucks.$inferInsert).returning();
     return truck;
   }
 
@@ -219,7 +219,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createEvent(eventData: InsertEvent): Promise<Event> {
-    const [event] = await db.insert(events).values(eventData).returning();
+    const [event] = await db.insert(events).values(eventData as typeof events.$inferInsert).returning();
     return event;
   }
 
@@ -277,7 +277,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBooking(bookingData: InsertBooking): Promise<Booking> {
-    const [booking] = await db.insert(bookings).values(bookingData).returning();
+    const [booking] = await db.insert(bookings).values(bookingData as typeof bookings.$inferInsert).returning();
     return booking;
   }
 
@@ -319,7 +319,7 @@ export class DatabaseStorage implements IStorage {
   async addUnavailability(data: InsertTruckUnavailability): Promise<TruckUnavailability> {
     const [unavailable] = await db
       .insert(truckUnavailability)
-      .values(data)
+      .values(data as typeof truckUnavailability.$inferInsert)
       .returning();
     return unavailable;
   }
@@ -342,7 +342,7 @@ export class DatabaseStorage implements IStorage {
   async upsertSubscription(data: InsertSubscription): Promise<Subscription> {
     const [subscription] = await db
       .insert(subscriptions)
-      .values(data)
+      .values(data as typeof subscriptions.$inferInsert)
       .onConflictDoUpdate({
         target: subscriptions.userId,
         set: {
@@ -375,7 +375,7 @@ export class DatabaseStorage implements IStorage {
   async addFavorite(data: InsertFavorite): Promise<Favorite> {
     const [favorite] = await db
       .insert(favorites)
-      .values(data)
+      .values(data as typeof favorites.$inferInsert)
       .returning();
     return favorite;
   }
@@ -404,7 +404,7 @@ export class DatabaseStorage implements IStorage {
   async addFollow(data: InsertFollow): Promise<Follow> {
     const [follow] = await db
       .insert(follows)
-      .values(data)
+      .values(data as typeof follows.$inferInsert)
       .returning();
     return follow;
   }
@@ -442,7 +442,7 @@ export class DatabaseStorage implements IStorage {
   async createSchedule(data: InsertSchedule): Promise<Schedule> {
     const [schedule] = await db
       .insert(schedules)
-      .values(data)
+      .values(data as typeof schedules.$inferInsert)
       .returning();
     return schedule;
   }
@@ -463,7 +463,7 @@ export class DatabaseStorage implements IStorage {
   async createUpdate(data: InsertUpdate): Promise<Update> {
     const [update] = await db
       .insert(updates)
-      .values(data)
+      .values(data as typeof updates.$inferInsert)
       .returning();
     return update;
   }
@@ -515,7 +515,7 @@ export class DatabaseStorage implements IStorage {
   async createInvite(data: InsertInvite): Promise<Invite> {
     const [invite] = await db
       .insert(invites)
-      .values(data)
+      .values(data as typeof invites.$inferInsert)
       .returning();
     return invite;
   }
@@ -523,7 +523,7 @@ export class DatabaseStorage implements IStorage {
   async updateInviteStatus(id: number, status: string): Promise<Invite | undefined> {
     const [invite] = await db
       .update(invites)
-      .set({ status })
+      .set({ status: status as "pending" | "accepted" | "declined" })
       .where(eq(invites.id, id))
       .returning();
     return invite;
@@ -549,7 +549,7 @@ export class DatabaseStorage implements IStorage {
   async createApplication(data: InsertApplication): Promise<Application> {
     const [application] = await db
       .insert(applications)
-      .values(data)
+      .values(data as typeof applications.$inferInsert)
       .returning();
     return application;
   }
@@ -557,7 +557,7 @@ export class DatabaseStorage implements IStorage {
   async updateApplicationStatus(id: number, status: string): Promise<Application | undefined> {
     const [application] = await db
       .update(applications)
-      .set({ status })
+      .set({ status: status as "applied" | "accepted" | "rejected" })
       .where(eq(applications.id, id))
       .returning();
     return application;
