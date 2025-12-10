@@ -4,17 +4,44 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
+// Extend IncomingMessage to store raw body for Stripe webhooks
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
   }
 }
+
+// JSON body parser with raw body preservation for webhooks
 app.use(express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+
+// Minimal CORS configuration
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : '',
+    ...(process.env.REPLIT_DOMAINS?.split(',').map(d => `https://${d}`) || []),
+    'http://localhost:5000',
+    'http://localhost:3000',
+  ].filter(Boolean);
+  
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -49,12 +76,21 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
+  // Global error handler - catches all unhandled route errors
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
+    
+    // Log the error but don't crash the process
+    console.error(`[ERROR] ${status}: ${message}`);
+    if (err.stack) {
+      console.error(err.stack);
+    }
 
-    res.status(status).json({ message });
-    throw err;
+    // Send error response if headers haven't been sent
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
   });
 
   // importantly only setup vite in development and after
@@ -79,3 +115,12 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
   });
 })();
+
+// Global handlers to prevent process crashes from unhandled errors
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UNHANDLED REJECTION] at:', promise, 'reason:', reason);
+});
