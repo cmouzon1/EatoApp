@@ -227,77 +227,117 @@ export const applicationsRelations = relations(applications, ({ one }) => ({
 }));
 
 // Zod schemas for validation
-// Note: id is NOT omitted for users since OIDC provides a sub claim that becomes the user id
-export const insertUserSchema = createInsertSchema(users).omit({
-  createdAt: true as const,
-  updatedAt: true as const,
-});
 export const userSchema = createSelectSchema(users);
 export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;
-
-export const insertTruckSchema = createInsertSchema(trucks).omit({
-  id: true as const,
-  createdAt: true as const,
-  updatedAt: true as const,
+export type InsertUser = typeof users.$inferInsert;
+export const insertUserSchema = z.object({
+  id: z.string().optional(),
+  email: z.string().email(),
+  name: z.string().optional().nullable(),
+  role: z.enum(["user", "truck", "org"]).optional().nullable(),
+  stripeCustomerId: z.string().optional().nullable(),
+  stripeSubscriptionId: z.string().optional().nullable(),
+  subscriptionTier: z.enum(["free", "basic", "pro"]).optional().nullable(),
+  subscriptionRole: z.enum(["user", "truck", "org"]).optional().nullable(),
+  subscriptionStatus: z.enum(["none", "active", "past_due", "canceled"]).optional().nullable(),
 });
+
 export const truckSchema = createSelectSchema(trucks);
 export type Truck = typeof trucks.$inferSelect;
-export type InsertTruck = z.infer<typeof insertTruckSchema>;
-
-export const insertEventSchema = createInsertSchema(events).omit({
-  id: true as const,
-  createdAt: true as const,
-  updatedAt: true as const,
+export type InsertTruck = typeof trucks.$inferInsert;
+export const insertTruckSchema = z.object({
+  ownerUserId: z.string(),
+  name: z.string().min(1),
+  cuisine: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  lat: z.number().optional().nullable(),
+  lng: z.number().optional().nullable(),
+  photoUrl: z.string().optional().nullable(),
+  social: z.object({
+    instagram: z.string().optional(),
+    facebook: z.string().optional(),
+    website: z.string().optional(),
+    email: z.string().optional(),
+  }).optional().nullable(),
+  hours: z.string().optional().nullable(),
+  isActive: z.boolean().optional(),
 });
+
 export const eventSchema = createSelectSchema(events);
 export type Event = typeof events.$inferSelect;
-export type InsertEvent = z.infer<typeof insertEventSchema>;
-
-export const insertFavoriteSchema = createInsertSchema(favorites).omit({
-  id: true as const,
-  createdAt: true as const,
+export type InsertEvent = typeof events.$inferInsert;
+export const insertEventSchema = z.object({
+  organizerUserId: z.string(),
+  title: z.string().min(1),
+  description: z.string().optional().nullable(),
+  date: z.coerce.date().optional().nullable(),
+  startTime: z.string().optional().nullable(),
+  endTime: z.string().optional().nullable(),
+  locationName: z.string().optional().nullable(),
+  lat: z.number().optional().nullable(),
+  lng: z.number().optional().nullable(),
+  minTrucks: z.number().optional().nullable(),
+  maxTrucks: z.number().optional().nullable(),
+  expectedAttendance: z.number().optional().nullable(),
+  cuisinePreferences: z.array(z.string()).optional().nullable(),
+  status: z.enum(["draft", "published", "closed"]).optional(),
 });
+
 export const favoriteSchema = createSelectSchema(favorites);
 export type Favorite = typeof favorites.$inferSelect;
-export type InsertFavorite = z.infer<typeof insertFavoriteSchema>;
-
-export const insertFollowSchema = createInsertSchema(follows).omit({
-  id: true as const,
-  createdAt: true as const,
+export type InsertFavorite = typeof favorites.$inferInsert;
+export const insertFavoriteSchema = z.object({
+  userId: z.string(),
+  truckId: z.number(),
 });
+
 export const followSchema = createSelectSchema(follows);
 export type Follow = typeof follows.$inferSelect;
-export type InsertFollow = z.infer<typeof insertFollowSchema>;
-
-export const insertScheduleSchema = createInsertSchema(schedules).omit({
-  id: true as const,
-  createdAt: true as const,
+export type InsertFollow = typeof follows.$inferInsert;
+export const insertFollowSchema = z.object({
+  userId: z.string(),
+  truckId: z.number(),
+  alertsEnabled: z.boolean().optional(),
 });
+
 export const scheduleSchema = createSelectSchema(schedules);
 export type Schedule = typeof schedules.$inferSelect;
-export type InsertSchedule = z.infer<typeof insertScheduleSchema>;
-
-export const insertUpdateSchema = createInsertSchema(updates).omit({
-  id: true as const,
-  createdAt: true as const,
+export type InsertSchedule = typeof schedules.$inferInsert;
+export const insertScheduleSchema = z.object({
+  truckId: z.number(),
+  title: z.string().optional().nullable(),
+  date: z.coerce.date(),
+  startTime: z.string().optional().nullable(),
+  endTime: z.string().optional().nullable(),
+  lat: z.number().optional().nullable(),
+  lng: z.number().optional().nullable(),
+  note: z.string().optional().nullable(),
 });
+
 export const updateSchema = createSelectSchema(updates);
 export type Update = typeof updates.$inferSelect;
-export type InsertUpdate = z.infer<typeof insertUpdateSchema>;
-
-export const insertInviteSchema = createInsertSchema(invites).omit({
-  id: true as const,
-  createdAt: true as const,
+export type InsertUpdate = typeof updates.$inferInsert;
+export const insertUpdateSchema = z.object({
+  truckId: z.number(),
+  message: z.string().min(1),
 });
+
 export const inviteSchema = createSelectSchema(invites);
 export type Invite = typeof invites.$inferSelect;
-export type InsertInvite = z.infer<typeof insertInviteSchema>;
-
-export const insertApplicationSchema = createInsertSchema(applications).omit({
-  id: true as const,
-  createdAt: true as const,
+export type InsertInvite = typeof invites.$inferInsert;
+export const insertInviteSchema = z.object({
+  eventId: z.number(),
+  truckId: z.number(),
+  status: z.enum(["pending", "accepted", "declined"]).optional(),
 });
+
 export const applicationSchema = createSelectSchema(applications);
 export type Application = typeof applications.$inferSelect;
-export type InsertApplication = z.infer<typeof insertApplicationSchema>;
+export type InsertApplication = typeof applications.$inferInsert;
+export const insertApplicationSchema = z.object({
+  eventId: z.number(),
+  truckId: z.number(),
+  note: z.string().optional().nullable(),
+  status: z.enum(["applied", "accepted", "rejected"]).optional(),
+});

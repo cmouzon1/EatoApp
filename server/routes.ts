@@ -1,6 +1,5 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { 
   insertTruckSchema, 
@@ -9,13 +8,27 @@ import {
   insertScheduleSchema,
   insertInviteSchema,
   insertApplicationSchema,
+  insertFavoriteSchema,
+  insertFollowSchema,
   users,
+  trucks,
+  events,
+  favorites,
+  follows,
+  schedules,
+  updates,
+  invites,
+  applications,
   type User,
+  type InsertTruck,
+  type InsertEvent,
+  type InsertSchedule,
+  type InsertUpdate,
 } from "@shared/schema";
 import { z } from "zod";
 import Stripe from "stripe";
 import { db, type Db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and, ilike, or, gte, lte, sql } from "drizzle-orm";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   console.warn('Missing STRIPE_SECRET_KEY - Stripe features will be disabled');
@@ -36,7 +49,6 @@ export async function getOrCreateUserByEmail(database: Db, email: string): Promi
     return existingUser;
   }
   
-  // Create new user with defaults
   const [newUser] = await database
     .insert(users)
     .values({
@@ -50,14 +62,51 @@ export async function getOrCreateUserByEmail(database: Db, email: string): Promi
   return newUser;
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  await setupAuth(app);
+// Main routes function
+export function applyRoutes(app: Express): Server {
+
+  // ===== HEALTH CHECK =====
+  app.get('/api/health', (_req, res) => {
+    res.json({ ok: true });
+  });
 
   // ===== AUTH ROUTES =====
+  app.get('/api/me', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({
+        user,
+        subscription: {
+          role: user.subscriptionRole || user.role,
+          tier: user.subscriptionTier || "free",
+          status: user.subscriptionStatus || "none",
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Legacy auth endpoint for compatibility
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
       
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -79,7 +128,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/profile', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const currentUser = await storage.getUser(userId);
+      const [currentUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
       
       if (!currentUser) {
         return res.status(404).json({ message: "User not found" });
@@ -98,11 +151,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const updatedUser = await storage.updateUser(userId, validatedData);
-      
-      if (!updatedUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
+      const [updatedUser] = await db
+        .update(users)
+        .set({ ...validatedData, updatedAt: new Date() })
+        .where(eq(users.id, userId))
+        .returning();
       
       res.json(updatedUser);
     } catch (error) {
@@ -115,34 +168,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== TRUCK ROUTES =====
+  // GET /api/trucks – list trucks with optional filters: city, cuisine, q
   app.get('/api/trucks', async (req, res) => {
     try {
-      const trucks = await storage.getAllTrucks();
-      res.json(trucks);
+      const { city, cuisine, q } = req.query;
+      
+      let query = db.select().from(trucks).where(eq(trucks.isActive, true));
+      
+      const conditions = [eq(trucks.isActive, true)];
+      
+      if (city && typeof city === 'string') {
+        conditions.push(ilike(trucks.city, `%${city}%`));
+      }
+      if (cuisine && typeof cuisine === 'string') {
+        conditions.push(ilike(trucks.cuisine, `%${cuisine}%`));
+      }
+      if (q && typeof q === 'string') {
+        conditions.push(
+          or(
+            ilike(trucks.name, `%${q}%`),
+            ilike(trucks.description, `%${q}%`),
+            ilike(trucks.cuisine, `%${q}%`)
+          )!
+        );
+      }
+      
+      const result = await db
+        .select()
+        .from(trucks)
+        .where(and(...conditions));
+      
+      res.json(result);
     } catch (error) {
       console.error("Error fetching trucks:", error);
       res.status(500).json({ message: "Failed to fetch trucks" });
     }
   });
 
+  // GET /api/trucks/my-trucks
   app.get('/api/trucks/my-trucks', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const trucks = await storage.getTrucksByOwner(userId);
-      res.json(trucks);
+      const result = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.ownerUserId, userId));
+      res.json(result);
     } catch (error) {
       console.error("Error fetching user trucks:", error);
       res.status(500).json({ message: "Failed to fetch trucks" });
     }
   });
 
+  // GET /api/trucks/:id
   app.get('/api/trucks/:id', async (req, res) => {
     try {
       const truckId = parseInt(req.params.id);
       if (isNaN(truckId)) {
         return res.status(400).json({ message: "Invalid truck ID" });
       }
-      const truck = await storage.getTruckById(truckId);
+      const [truck] = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.id, truckId))
+        .limit(1);
+      
       if (!truck) {
         return res.status(404).json({ message: "Truck not found" });
       }
@@ -153,11 +243,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/trucks – create truck for current user
   app.post('/api/trucks', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const parsed = insertTruckSchema.parse({ ...req.body, ownerUserId: userId });
-      const truck = await storage.createTruck(parsed);
+      const parsed = insertTruckSchema.parse({ ...req.body, ownerUserId: userId }) as InsertTruck;
+      const [truck] = await db
+        .insert(trucks)
+        .values(parsed)
+        .returning();
       res.status(201).json(truck);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -168,14 +262,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/trucks/:id', isAuthenticated, async (req: any, res) => {
+  // PUT /api/trucks/:id – update only if current user owns the truck
+  app.put('/api/trucks/:id', isAuthenticated, async (req: any, res) => {
     try {
       const truckId = parseInt(req.params.id);
       if (isNaN(truckId)) {
         return res.status(400).json({ message: "Invalid truck ID" });
       }
       
-      const truck = await storage.getTruckById(truckId);
+      const [truck] = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.id, truckId))
+        .limit(1);
+      
       if (!truck) {
         return res.status(404).json({ message: "Truck not found" });
       }
@@ -185,7 +285,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Not authorized to update this truck" });
       }
       
-      const updatedTruck = await storage.updateTruck(truckId, req.body);
+      const [updatedTruck] = await db
+        .update(trucks)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(trucks.id, truckId))
+        .returning();
+      
+      res.json(updatedTruck);
+    } catch (error) {
+      console.error("Error updating truck:", error);
+      res.status(500).json({ message: "Failed to update truck" });
+    }
+  });
+
+  // Keep PATCH for backward compatibility
+  app.patch('/api/trucks/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const truckId = parseInt(req.params.id);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      
+      const [truck] = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.id, truckId))
+        .limit(1);
+      
+      if (!truck) {
+        return res.status(404).json({ message: "Truck not found" });
+      }
+      
+      const userId = req.user.id;
+      if (truck.ownerUserId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this truck" });
+      }
+      
+      const [updatedTruck] = await db
+        .update(trucks)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(trucks.id, truckId))
+        .returning();
+      
       res.json(updatedTruck);
     } catch (error) {
       console.error("Error updating truck:", error);
@@ -200,7 +341,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid truck ID" });
       }
       
-      const truck = await storage.getTruckById(truckId);
+      const [truck] = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.id, truckId))
+        .limit(1);
+      
       if (!truck) {
         return res.status(404).json({ message: "Truck not found" });
       }
@@ -210,7 +356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Not authorized to delete this truck" });
       }
       
-      await storage.deleteTruck(truckId);
+      await db.delete(trucks).where(eq(trucks.id, truckId));
       res.json({ ok: true });
     } catch (error) {
       console.error("Error deleting truck:", error);
@@ -219,10 +365,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== EVENT ROUTES =====
+  // GET /api/events – list events with optional filters: date range, city, status
   app.get('/api/events', async (req, res) => {
     try {
-      const events = await storage.getAllEvents();
-      res.json(events);
+      const { city, status, startDate, endDate } = req.query;
+      
+      const conditions = [];
+      
+      if (city && typeof city === 'string') {
+        conditions.push(ilike(events.locationName, `%${city}%`));
+      }
+      if (status && typeof status === 'string') {
+        conditions.push(eq(events.status, status as "draft" | "published" | "closed"));
+      }
+      if (startDate && typeof startDate === 'string') {
+        conditions.push(gte(events.date, new Date(startDate)));
+      }
+      if (endDate && typeof endDate === 'string') {
+        conditions.push(lte(events.date, new Date(endDate)));
+      }
+      
+      const result = conditions.length > 0
+        ? await db.select().from(events).where(and(...conditions))
+        : await db.select().from(events);
+      
+      res.json(result);
     } catch (error) {
       console.error("Error fetching events:", error);
       res.status(500).json({ message: "Failed to fetch events" });
@@ -232,21 +399,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/events/my-events', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const events = await storage.getEventsByOrganizer(userId);
-      res.json(events);
+      const result = await db
+        .select()
+        .from(events)
+        .where(eq(events.organizerUserId, userId));
+      res.json(result);
     } catch (error) {
       console.error("Error fetching user events:", error);
       res.status(500).json({ message: "Failed to fetch events" });
     }
   });
 
+  // GET /api/events/:id
   app.get('/api/events/:id', async (req, res) => {
     try {
       const eventId = parseInt(req.params.id);
       if (isNaN(eventId)) {
         return res.status(400).json({ message: "Invalid event ID" });
       }
-      const event = await storage.getEventById(eventId);
+      const [event] = await db
+        .select()
+        .from(events)
+        .where(eq(events.id, eventId))
+        .limit(1);
+      
       if (!event) {
         return res.status(404).json({ message: "Event not found" });
       }
@@ -257,11 +433,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/events – create event for current organizer
   app.post('/api/events', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const parsed = insertEventSchema.parse({ ...req.body, organizerUserId: userId });
-      const event = await storage.createEvent(parsed);
+      const parsed = insertEventSchema.parse({ ...req.body, organizerUserId: userId }) as InsertEvent;
+      const [event] = await db
+        .insert(events)
+        .values(parsed)
+        .returning();
       res.status(201).json(event);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -272,14 +452,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/events/:id', isAuthenticated, async (req: any, res) => {
+  // PUT /api/events/:id – update only if current user is organizer
+  app.put('/api/events/:id', isAuthenticated, async (req: any, res) => {
     try {
       const eventId = parseInt(req.params.id);
       if (isNaN(eventId)) {
         return res.status(400).json({ message: "Invalid event ID" });
       }
       
-      const event = await storage.getEventById(eventId);
+      const [event] = await db
+        .select()
+        .from(events)
+        .where(eq(events.id, eventId))
+        .limit(1);
+      
       if (!event) {
         return res.status(404).json({ message: "Event not found" });
       }
@@ -289,7 +475,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Not authorized to update this event" });
       }
       
-      const updatedEvent = await storage.updateEvent(eventId, req.body);
+      const [updatedEvent] = await db
+        .update(events)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(events.id, eventId))
+        .returning();
+      
+      res.json(updatedEvent);
+    } catch (error) {
+      console.error("Error updating event:", error);
+      res.status(500).json({ message: "Failed to update event" });
+    }
+  });
+
+  // Keep PATCH for backward compatibility
+  app.patch('/api/events/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      if (isNaN(eventId)) {
+        return res.status(400).json({ message: "Invalid event ID" });
+      }
+      
+      const [event] = await db
+        .select()
+        .from(events)
+        .where(eq(events.id, eventId))
+        .limit(1);
+      
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      const userId = req.user.id;
+      if (event.organizerUserId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this event" });
+      }
+      
+      const [updatedEvent] = await db
+        .update(events)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(events.id, eventId))
+        .returning();
+      
       res.json(updatedEvent);
     } catch (error) {
       console.error("Error updating event:", error);
@@ -304,7 +531,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid event ID" });
       }
       
-      const event = await storage.getEventById(eventId);
+      const [event] = await db
+        .select()
+        .from(events)
+        .where(eq(events.id, eventId))
+        .limit(1);
+      
       if (!event) {
         return res.status(404).json({ message: "Event not found" });
       }
@@ -314,7 +546,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Not authorized to delete this event" });
       }
       
-      await storage.deleteEvent(eventId);
+      await db.delete(events).where(eq(events.id, eventId));
       res.json({ ok: true });
     } catch (error) {
       console.error("Error deleting event:", error);
@@ -323,42 +555,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== FAVORITES ROUTES =====
+  // GET /api/favorites
   app.get('/api/favorites', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const favorites = await storage.getFavoritesByUser(userId);
-      res.json(favorites);
+      const result = await db
+        .select()
+        .from(favorites)
+        .where(eq(favorites.userId, userId));
+      res.json(result);
     } catch (error) {
       console.error("Error fetching favorites:", error);
       res.status(500).json({ message: "Failed to fetch favorites" });
     }
   });
 
+  // POST /api/favorites – body: { truckId }
   app.post('/api/favorites', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const { truckId } = req.body;
+      const bodySchema = z.object({ truckId: z.number() });
+      const { truckId } = bodySchema.parse(req.body);
       
-      const existing = await storage.checkFavorite(userId, truckId);
+      const [existing] = await db
+        .select()
+        .from(favorites)
+        .where(and(eq(favorites.userId, userId), eq(favorites.truckId, truckId)))
+        .limit(1);
+      
       if (existing) {
         return res.status(400).json({ message: "Already favorited" });
       }
 
-      const favorite = await storage.addFavorite({ userId, truckId });
+      const [favorite] = await db
+        .insert(favorites)
+        .values({ userId, truckId })
+        .returning();
+      
       res.status(201).json(favorite);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error adding favorite:", error);
       res.status(500).json({ message: "Failed to add favorite" });
     }
   });
 
+  // DELETE /api/favorites/:id
   app.delete('/api/favorites/:id', isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid favorite ID" });
       }
-      await storage.removeFavorite(id);
+      
+      const userId = req.user.id;
+      const [favorite] = await db
+        .select()
+        .from(favorites)
+        .where(eq(favorites.id, id))
+        .limit(1);
+      
+      if (!favorite) {
+        return res.status(404).json({ message: "Favorite not found" });
+      }
+      
+      if (favorite.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      await db.delete(favorites).where(eq(favorites.id, id));
       res.json({ ok: true });
     } catch (error) {
       console.error("Error removing favorite:", error);
@@ -367,57 +634,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== FOLLOWS ROUTES =====
+  // GET /api/follows
   app.get('/api/follows', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const follows = await storage.getFollowsByUser(userId);
-      res.json(follows);
+      const result = await db
+        .select()
+        .from(follows)
+        .where(eq(follows.userId, userId));
+      res.json(result);
     } catch (error) {
       console.error("Error fetching follows:", error);
       res.status(500).json({ message: "Failed to fetch follows" });
     }
   });
 
+  // POST /api/follows – { truckId, alertsEnabled }
   app.post('/api/follows', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const { truckId, alertsEnabled = false } = req.body;
+      const bodySchema = z.object({
+        truckId: z.number(),
+        alertsEnabled: z.boolean().optional().default(false),
+      });
+      const { truckId, alertsEnabled } = bodySchema.parse(req.body);
       
-      const existing = await storage.checkFollow(userId, truckId);
+      const [existing] = await db
+        .select()
+        .from(follows)
+        .where(and(eq(follows.userId, userId), eq(follows.truckId, truckId)))
+        .limit(1);
+      
       if (existing) {
         return res.status(400).json({ message: "Already following" });
       }
 
-      const follow = await storage.addFollow({ userId, truckId, alertsEnabled });
+      const [follow] = await db
+        .insert(follows)
+        .values({ userId, truckId, alertsEnabled })
+        .returning();
+      
       res.status(201).json(follow);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error adding follow:", error);
       res.status(500).json({ message: "Failed to follow truck" });
     }
   });
 
+  // PATCH /api/follows/:id – toggle alertsEnabled
   app.patch('/api/follows/:id', isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid follow ID" });
       }
-      const { alertsEnabled } = req.body;
-      const follow = await storage.updateFollow(id, { alertsEnabled });
-      res.json(follow);
+      
+      const userId = req.user.id;
+      const [follow] = await db
+        .select()
+        .from(follows)
+        .where(eq(follows.id, id))
+        .limit(1);
+      
+      if (!follow) {
+        return res.status(404).json({ message: "Follow not found" });
+      }
+      
+      if (follow.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      const bodySchema = z.object({ alertsEnabled: z.boolean() });
+      const { alertsEnabled } = bodySchema.parse(req.body);
+      
+      const [updatedFollow] = await db
+        .update(follows)
+        .set({ alertsEnabled })
+        .where(eq(follows.id, id))
+        .returning();
+      
+      res.json(updatedFollow);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error updating follow:", error);
       res.status(500).json({ message: "Failed to update follow" });
     }
   });
 
+  // DELETE /api/follows/:id
   app.delete('/api/follows/:id', isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid follow ID" });
       }
-      await storage.removeFollow(id);
+      
+      const userId = req.user.id;
+      const [follow] = await db
+        .select()
+        .from(follows)
+        .where(eq(follows.id, id))
+        .limit(1);
+      
+      if (!follow) {
+        return res.status(404).json({ message: "Follow not found" });
+      }
+      
+      if (follow.userId !== userId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      
+      await db.delete(follows).where(eq(follows.id, id));
       res.json({ ok: true });
     } catch (error) {
       console.error("Error removing follow:", error);
@@ -426,24 +758,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== SCHEDULES ROUTES =====
+  // GET /api/schedules?truckId=...
   app.get('/api/schedules', async (req, res) => {
     try {
       const truckId = parseInt(req.query.truckId as string);
       if (isNaN(truckId)) {
-        return res.status(400).json({ message: "Invalid truck ID" });
+        return res.status(400).json({ message: "Invalid or missing truck ID" });
       }
-      const schedules = await storage.getSchedulesByTruck(truckId);
-      res.json(schedules);
+      const result = await db
+        .select()
+        .from(schedules)
+        .where(eq(schedules.truckId, truckId));
+      res.json(result);
     } catch (error) {
       console.error("Error fetching schedules:", error);
       res.status(500).json({ message: "Failed to fetch schedules" });
     }
   });
 
+  // POST /api/schedules – create schedule for a truck the user owns
   app.post('/api/schedules', isAuthenticated, async (req: any, res) => {
     try {
-      const parsed = insertScheduleSchema.parse(req.body);
-      const schedule = await storage.createSchedule(parsed);
+      const userId = req.user.id;
+      const parsed = insertScheduleSchema.parse(req.body) as InsertSchedule;
+      
+      // Verify user owns the truck
+      const [truck] = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.id, parsed.truckId))
+        .limit(1);
+      
+      if (!truck) {
+        return res.status(404).json({ message: "Truck not found" });
+      }
+      
+      if (truck.ownerUserId !== userId) {
+        return res.status(403).json({ message: "Not authorized to create schedule for this truck" });
+      }
+      
+      const [schedule] = await db
+        .insert(schedules)
+        .values(parsed)
+        .returning();
+      
       res.status(201).json(schedule);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -454,13 +812,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // DELETE /api/schedules/:id
   app.delete('/api/schedules/:id', isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid schedule ID" });
       }
-      await storage.deleteSchedule(id);
+      
+      const userId = req.user.id;
+      
+      // Get the schedule and verify ownership through truck
+      const [schedule] = await db
+        .select()
+        .from(schedules)
+        .where(eq(schedules.id, id))
+        .limit(1);
+      
+      if (!schedule) {
+        return res.status(404).json({ message: "Schedule not found" });
+      }
+      
+      const [truck] = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.id, schedule.truckId))
+        .limit(1);
+      
+      if (!truck || truck.ownerUserId !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this schedule" });
+      }
+      
+      await db.delete(schedules).where(eq(schedules.id, id));
       res.json({ ok: true });
     } catch (error) {
       console.error("Error deleting schedule:", error);
@@ -469,24 +852,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== UPDATES ROUTES =====
+  // GET /api/updates?truckId=...
   app.get('/api/updates', async (req, res) => {
     try {
       const truckId = parseInt(req.query.truckId as string);
       if (isNaN(truckId)) {
-        return res.status(400).json({ message: "Invalid truck ID" });
+        return res.status(400).json({ message: "Invalid or missing truck ID" });
       }
-      const updates = await storage.getUpdatesByTruck(truckId);
-      res.json(updates);
+      const result = await db
+        .select()
+        .from(updates)
+        .where(eq(updates.truckId, truckId));
+      res.json(result);
     } catch (error) {
       console.error("Error fetching updates:", error);
       res.status(500).json({ message: "Failed to fetch updates" });
     }
   });
 
+  // POST /api/updates – post status update for a truck the user owns
   app.post('/api/updates', isAuthenticated, async (req: any, res) => {
     try {
-      const parsed = insertUpdateSchema.parse(req.body);
-      const update = await storage.createUpdate(parsed);
+      const userId = req.user.id;
+      const parsed = insertUpdateSchema.parse(req.body) as InsertUpdate;
+      
+      // Verify user owns the truck
+      const [truck] = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.id, parsed.truckId))
+        .limit(1);
+      
+      if (!truck) {
+        return res.status(404).json({ message: "Truck not found" });
+      }
+      
+      if (truck.ownerUserId !== userId) {
+        return res.status(403).json({ message: "Not authorized to post updates for this truck" });
+      }
+      
+      const [update] = await db
+        .insert(updates)
+        .values(parsed)
+        .returning();
+      
       res.status(201).json(update);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -497,121 +906,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ===== TRUCK ANALYTICS =====
-  app.get('/api/truck/analytics', async (req, res) => {
-    try {
-      const truckId = parseInt(req.query.truckId as string);
-      if (isNaN(truckId)) {
-        return res.status(400).json({ message: "Invalid truck ID" });
-      }
-      const analytics = await storage.getTruckAnalytics(truckId);
-      res.json(analytics);
-    } catch (error) {
-      console.error("Error fetching analytics:", error);
-      res.status(500).json({ message: "Failed to fetch analytics" });
-    }
-  });
-
-  // ===== INVITES ROUTES =====
-  app.get('/api/events/:id/invites', isAuthenticated, async (req: any, res) => {
-    try {
-      const eventId = parseInt(req.params.id);
-      if (isNaN(eventId)) {
-        return res.status(400).json({ message: "Invalid event ID" });
-      }
-      const invites = await storage.getInvitesByEvent(eventId);
-      res.json(invites);
-    } catch (error) {
-      console.error("Error fetching invites:", error);
-      res.status(500).json({ message: "Failed to fetch invites" });
-    }
-  });
-
-  app.get('/api/trucks/:id/invites', isAuthenticated, async (req: any, res) => {
-    try {
-      const truckId = parseInt(req.params.id);
-      if (isNaN(truckId)) {
-        return res.status(400).json({ message: "Invalid truck ID" });
-      }
-      const invites = await storage.getInvitesByTruck(truckId);
-      res.json(invites);
-    } catch (error) {
-      console.error("Error fetching invites:", error);
-      res.status(500).json({ message: "Failed to fetch invites" });
-    }
-  });
-
+  // ===== EVENT ↔ TRUCK MATCHING =====
+  // POST /api/events/:id/invite – organizer invites a truck
   app.post('/api/events/:id/invite', isAuthenticated, async (req: any, res) => {
     try {
       const eventId = parseInt(req.params.id);
       if (isNaN(eventId)) {
         return res.status(400).json({ message: "Invalid event ID" });
       }
-      const { truckId } = req.body;
-      const invite = await storage.createInvite({ eventId, truckId });
+      
+      const userId = req.user.id;
+      
+      // Verify user is the organizer
+      const [event] = await db
+        .select()
+        .from(events)
+        .where(eq(events.id, eventId))
+        .limit(1);
+      
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      if (event.organizerUserId !== userId) {
+        return res.status(403).json({ message: "Only the organizer can invite trucks" });
+      }
+      
+      const bodySchema = z.object({ truckId: z.number() });
+      const { truckId } = bodySchema.parse(req.body);
+      
+      // Check if invite already exists
+      const [existing] = await db
+        .select()
+        .from(invites)
+        .where(and(eq(invites.eventId, eventId), eq(invites.truckId, truckId)))
+        .limit(1);
+      
+      if (existing) {
+        return res.status(400).json({ message: "Invite already exists" });
+      }
+      
+      const [invite] = await db
+        .insert(invites)
+        .values({ eventId, truckId })
+        .returning();
+      
       res.status(201).json(invite);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error creating invite:", error);
       res.status(500).json({ message: "Failed to create invite" });
     }
   });
 
-  app.patch('/api/invites/:id', isAuthenticated, async (req: any, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid invite ID" });
-      }
-      const { status } = req.body;
-      const invite = await storage.updateInviteStatus(id, status);
-      res.json(invite);
-    } catch (error) {
-      console.error("Error updating invite:", error);
-      res.status(500).json({ message: "Failed to update invite" });
-    }
-  });
-
-  // ===== APPLICATIONS ROUTES =====
-  app.get('/api/events/:id/applications', isAuthenticated, async (req: any, res) => {
+  // GET /api/events/:id/invites
+  app.get('/api/events/:id/invites', isAuthenticated, async (req: any, res) => {
     try {
       const eventId = parseInt(req.params.id);
       if (isNaN(eventId)) {
         return res.status(400).json({ message: "Invalid event ID" });
       }
-      const applications = await storage.getApplicationsByEvent(eventId);
-      res.json(applications);
+      const result = await db
+        .select()
+        .from(invites)
+        .where(eq(invites.eventId, eventId));
+      res.json(result);
     } catch (error) {
-      console.error("Error fetching applications:", error);
-      res.status(500).json({ message: "Failed to fetch applications" });
+      console.error("Error fetching invites:", error);
+      res.status(500).json({ message: "Failed to fetch invites" });
     }
   });
 
-  app.get('/api/trucks/:id/applications', isAuthenticated, async (req: any, res) => {
-    try {
-      const truckId = parseInt(req.params.id);
-      if (isNaN(truckId)) {
-        return res.status(400).json({ message: "Invalid truck ID" });
-      }
-      const applications = await storage.getApplicationsByTruck(truckId);
-      res.json(applications);
-    } catch (error) {
-      console.error("Error fetching applications:", error);
-      res.status(500).json({ message: "Failed to fetch applications" });
-    }
-  });
-
+  // POST /api/events/:id/apply – truck applies to event
   app.post('/api/events/:id/apply', isAuthenticated, async (req: any, res) => {
     try {
       const eventId = parseInt(req.params.id);
       if (isNaN(eventId)) {
         return res.status(400).json({ message: "Invalid event ID" });
       }
-      const { truckId, note } = req.body;
-      const application = await storage.createApplication({ eventId, truckId, note });
+      
+      const userId = req.user.id;
+      
+      const bodySchema = z.object({
+        truckId: z.number(),
+        note: z.string().optional(),
+      });
+      const { truckId, note } = bodySchema.parse(req.body);
+      
+      // Verify user owns the truck
+      const [truck] = await db
+        .select()
+        .from(trucks)
+        .where(eq(trucks.id, truckId))
+        .limit(1);
+      
+      if (!truck) {
+        return res.status(404).json({ message: "Truck not found" });
+      }
+      
+      if (truck.ownerUserId !== userId) {
+        return res.status(403).json({ message: "You can only apply with trucks you own" });
+      }
+      
+      // Check if application already exists
+      const [existing] = await db
+        .select()
+        .from(applications)
+        .where(and(eq(applications.eventId, eventId), eq(applications.truckId, truckId)))
+        .limit(1);
+      
+      if (existing) {
+        return res.status(400).json({ message: "Application already exists" });
+      }
+      
+      const [application] = await db
+        .insert(applications)
+        .values({ eventId, truckId, note })
+        .returning();
+      
       res.status(201).json(application);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error creating application:", error);
       res.status(500).json({ message: "Failed to create application" });
+    }
+  });
+
+  // GET /api/events/:id/applicants
+  app.get('/api/events/:id/applicants', isAuthenticated, async (req: any, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      if (isNaN(eventId)) {
+        return res.status(400).json({ message: "Invalid event ID" });
+      }
+      const result = await db
+        .select()
+        .from(applications)
+        .where(eq(applications.eventId, eventId));
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      res.status(500).json({ message: "Failed to fetch applications" });
+    }
+  });
+
+  // Additional routes for managing invite/application status
+  app.patch('/api/invites/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid invite ID" });
+      }
+      
+      const bodySchema = z.object({
+        status: z.enum(["pending", "accepted", "declined"]),
+      });
+      const { status } = bodySchema.parse(req.body);
+      
+      const [invite] = await db
+        .update(invites)
+        .set({ status })
+        .where(eq(invites.id, id))
+        .returning();
+      
+      res.json(invite);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error updating invite:", error);
+      res.status(500).json({ message: "Failed to update invite" });
     }
   });
 
@@ -621,12 +1089,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid application ID" });
       }
-      const { status } = req.body;
-      const application = await storage.updateApplicationStatus(id, status);
+      
+      const bodySchema = z.object({
+        status: z.enum(["applied", "accepted", "rejected"]),
+      });
+      const { status } = bodySchema.parse(req.body);
+      
+      const [application] = await db
+        .update(applications)
+        .set({ status })
+        .where(eq(applications.id, id))
+        .returning();
+      
       res.json(application);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error updating application:", error);
       res.status(500).json({ message: "Failed to update application" });
+    }
+  });
+
+  // Additional helper routes for trucks
+  app.get('/api/trucks/:id/invites', isAuthenticated, async (req: any, res) => {
+    try {
+      const truckId = parseInt(req.params.id);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      const result = await db
+        .select()
+        .from(invites)
+        .where(eq(invites.truckId, truckId));
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching invites:", error);
+      res.status(500).json({ message: "Failed to fetch invites" });
+    }
+  });
+
+  app.get('/api/trucks/:id/applications', isAuthenticated, async (req: any, res) => {
+    try {
+      const truckId = parseInt(req.params.id);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid truck ID" });
+      }
+      const result = await db
+        .select()
+        .from(applications)
+        .where(eq(applications.truckId, truckId));
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      res.status(500).json({ message: "Failed to fetch applications" });
+    }
+  });
+
+  // ===== TRUCK ANALYTICS =====
+  // GET /api/truck/analytics?truckId=...
+  app.get('/api/truck/analytics', async (req, res) => {
+    try {
+      const truckId = parseInt(req.query.truckId as string);
+      if (isNaN(truckId)) {
+        return res.status(400).json({ message: "Invalid or missing truck ID" });
+      }
+      
+      // Get counts using separate queries
+      const [followersResult] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(follows)
+        .where(eq(follows.truckId, truckId));
+      
+      const [favoritesResult] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(favorites)
+        .where(eq(favorites.truckId, truckId));
+      
+      const [invitesResult] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(invites)
+        .where(eq(invites.truckId, truckId));
+      
+      const [applicationsResult] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(applications)
+        .where(eq(applications.truckId, truckId));
+      
+      res.json({
+        followers: followersResult?.count || 0,
+        favorites: favoritesResult?.count || 0,
+        invites: invitesResult?.count || 0,
+        applications: applicationsResult?.count || 0,
+      });
+    } catch (error) {
+      console.error("Error fetching analytics:", error);
+      res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
 
@@ -638,7 +1196,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
       
       if (!user || !user.email) {
         return res.status(400).json({ error: 'User email required' });
@@ -695,7 +1257,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/subscription/status', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
       
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
@@ -715,7 +1281,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/subscription/activate-free', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const user = await storage.getUser(userId);
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
       
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
@@ -725,11 +1295,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Active paid subscription already exists' });
       }
 
-      const updatedUser = await storage.updateUser(userId, {
-        subscriptionTier: 'free',
-        subscriptionStatus: 'active',
-        subscriptionRole: user.role,
-      });
+      const [updatedUser] = await db
+        .update(users)
+        .set({
+          subscriptionTier: 'free',
+          subscriptionStatus: 'active',
+          subscriptionRole: user.role,
+        })
+        .where(eq(users.id, userId))
+        .returning();
 
       res.json({
         status: updatedUser?.subscriptionStatus,
@@ -767,13 +1341,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const role = session.metadata?.role;
 
           if (userId) {
-            await storage.updateUser(userId, {
-              subscriptionTier: tier as "free" | "basic" | "pro",
-              subscriptionStatus: 'active',
-              subscriptionRole: role as "user" | "truck" | "org",
-              stripeCustomerId: session.customer as string,
-              stripeSubscriptionId: session.subscription as string,
-            });
+            await db
+              .update(users)
+              .set({
+                subscriptionTier: tier as "free" | "basic" | "pro",
+                subscriptionStatus: 'active',
+                subscriptionRole: role as "user" | "truck" | "org",
+                stripeCustomerId: session.customer as string,
+                stripeSubscriptionId: session.subscription as string,
+              })
+              .where(eq(users.id, userId));
           }
           break;
 
@@ -781,17 +1358,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const deletedSub = event.data.object as Stripe.Subscription;
           const deletedCustId = deletedSub.customer as string;
 
-          const [userToCancel] = await db
-            .select()
-            .from(users)
-            .where(eq(users.stripeCustomerId, deletedCustId))
-            .limit(1);
-
-          if (userToCancel) {
-            await storage.updateUser(userToCancel.id, {
-              subscriptionStatus: 'canceled',
-            });
-          }
+          await db
+            .update(users)
+            .set({ subscriptionStatus: 'canceled' })
+            .where(eq(users.stripeCustomerId, deletedCustId));
           break;
       }
 
@@ -804,4 +1374,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
   return httpServer;
+}
+
+// Main entry point - combines auth setup and routes
+export async function registerRoutes(app: Express): Promise<Server> {
+  await setupAuth(app);
+  return applyRoutes(app);
 }
