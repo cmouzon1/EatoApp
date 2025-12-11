@@ -26,7 +26,17 @@ export function getSession() {
     createTableIfMissing: false,
     ttl: sessionTtl,
     tableName: "sessions",
+    errorLog: (err: Error) => {
+      // Log session store errors but don't crash
+      console.error('[SESSION STORE ERROR]', err.message);
+    },
   });
+  
+  // Handle session store connection errors gracefully
+  sessionStore.on('error', (err: Error) => {
+    console.error('[SESSION STORE CONNECTION ERROR]', err.message);
+  });
+  
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
