@@ -90,6 +90,11 @@ async function upsertUser(claims: any) {
 }
 
 export async function setupAuth(app: Express) {
+  if (process.env.DISABLE_AUTH === "true") {
+    console.warn("DISABLE_AUTH=true: skipping auth setup");
+    return;
+  }
+  
   app.set("trust proxy", 1);
   app.use(getSession());
   app.use(passport.initialize());
