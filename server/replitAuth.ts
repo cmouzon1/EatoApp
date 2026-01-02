@@ -1,3 +1,10 @@
+console.log("setupAuth: START", {
+  hostnameExample: "will read per request",
+  DISABLE_AUTH: process.env.DISABLE_AUTH,
+  REPL_ID: process.env.REPL_ID ? "set" : "missing",
+  NODE_ENV: process.env.NODE_ENV,
+});
+
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
@@ -145,6 +152,8 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/login", (req, res, next) => {
     ensureStrategy(req.hostname);
+    console.log("setupAuth: registered GET /api/login");
+
     passport.authenticate(`replitauth:${req.hostname}`, {
       prompt: "login consent",
       scope: ["openid", "email", "profile", "offline_access"],
@@ -153,6 +162,8 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
+    console.log("setupAuth: registered GET /api/callback");
+
     passport.authenticate(`replitauth:${req.hostname}`, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
