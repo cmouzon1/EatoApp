@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import Stripe from "stripe";
+import bodyParser from "body-parser";
 import { db, type Db } from "./db";
 import { eq, and, ilike, or, gte, lte, sql } from "drizzle-orm";
 
@@ -1535,11 +1536,70 @@ export function applyRoutes(app: Express): Server {
   });
 
   // POST /api/subscription/webhook - Stripe webhook handler
-  app.post('/api/subscription/webhook', async (req, res) => {
+  app.post(
+  "/api/subscription/webhook",
+  bodyParser.raw({ type: "application/json" }),
+  async (req, res) => {
     if (!stripe) {
       console.error('Stripe webhook received but Stripe is not configured');
       return res.status(500).json({ error: 'Stripe not configured' });
     }
+// POST /api/stripe/webhook — one-off payments / PaymentIntents
+app.post(
+  "/api/stripe/webhook",
+  bodyParser.raw({ type: "application/json" }),
+  async (req, res) => {
+    if (!stripe) {
+      console.error("Stripe payment webhook received but Stripe is not configured");
+      return res.status(500).json({ error: "Stripe not configured" });
+    }
+
+    const sig = req.headers["stripe-signature"] as string | undefined;
+    const webhookSecret = process.env.STRIPE_PAYMENTS_WEBHOOK_SECRET;
+
+    if (!sig || !webhookSecret) {
+      return res.status(500).json({
+        error: "Missing stripe-signature header or payments webhook secret",
+      });
+    }
+
+    let event: Stripe.Event;
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+      console.error("Stripe payment webhook signature verification failed", err);
+      return res.status(400).send("Invalid signature");
+    }
+
+    console.log(`Stripe payment webhook event: ${event.type}`);
+
+    switch (event.type) {
+      case "payment_intent.succeeded": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+
+        // OPTIONAL (future):
+        // Use metadata to update your DB
+        // const bookingId = paymentIntent.metadata?.booking_id;
+
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+
+        // OPTIONAL: log / notify / mark failed
+        break;
+      }
+
+      default:
+        // Ignore other events
+        break;
+    }
+
+    return res.json({ received: true });
+  }
+);
 
     const sig = req.headers['stripe-signature'] as string;
     const webhookSecret = process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET;
