@@ -1,27 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
-import { useQuery } from "@tanstack/react-query";
+import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Menu, Truck, Calendar, User, LogOut, Crown, Wrench } from "lucide-react";
+import { Menu, Truck, Calendar } from "lucide-react";
 import { useState } from "react";
 
-type SubscriptionStatus = {
-  status: string;
-  tier: string;
-  currentPeriodEnd?: string;
-};
-
 export function Header() {
-  const { user, isAuthenticated, isTruckOwner, isEventOrganizer, subscription } = useAuth();
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -65,95 +48,21 @@ export function Header() {
 
           {/* User Actions */}
           <div className="flex items-center gap-3">
-            {isAuthenticated && user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="rounded-full"
-                    data-testid="button-user-menu"
-                  >
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage src={user.profileImageUrl || undefined} />
-                      <AvatarFallback>
-                        {user.firstName?.[0] || user.email?.[0] || "U"}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <div className="flex items-center gap-3 px-2 py-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={user.profileImageUrl || undefined} />
-                      <AvatarFallback>
-                        {user.firstName?.[0] || user.email?.[0] || "U"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex flex-col flex-1">
-                      <p className="text-sm font-medium" data-testid="text-user-name">
-                        {user.firstName || user.email?.split("@")[0] || "User"}
-                      </p>
-                      <p className="text-xs text-muted-foreground" data-testid="text-user-email">
-                        {user.email}
-                      </p>
-                      {subscription && subscription.status === 'active' && (
-                        <Badge variant="outline" className="mt-1 text-xs w-fit capitalize" data-testid="badge-subscription-tier">
-                          {subscription.tier}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <DropdownMenuSeparator />
-                  {isTruckOwner && (
-                    <Link href="/dashboard/truck">
-                      <DropdownMenuItem data-testid="link-truck-dashboard">
-                        <Truck className="mr-2 h-4 w-4" />
-                        My Trucks
-                      </DropdownMenuItem>
-                    </Link>
-                  )}
-                  {isEventOrganizer && (
-                    <Link href="/dashboard/organizer">
-                      <DropdownMenuItem data-testid="link-organizer-dashboard">
-                        <Calendar className="mr-2 h-4 w-4" />
-                        My Events
-                      </DropdownMenuItem>
-                    </Link>
-                  )}
-                  <Link href="/profile">
-                    <DropdownMenuItem data-testid="link-profile">
-                      <User className="mr-2 h-4 w-4" />
-                      Profile
-                    </DropdownMenuItem>
-                  </Link>
-                  <Link href="/subscription">
-                    <DropdownMenuItem data-testid="link-subscription">
-                      <Crown className="mr-2 h-4 w-4" />
-                      Subscription
-                    </DropdownMenuItem>
-                  </Link>
-                  <Link href="/dev-tools">
-                    <DropdownMenuItem data-testid="link-dev-tools">
-                      <Wrench className="mr-2 h-4 w-4" />
-                      Dev Tools
-                    </DropdownMenuItem>
-                  </Link>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <a href="/api/logout" data-testid="link-logout">
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Log Out
-                    </a>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-      <Button asChild data-testid="button-login">
-        <a href="/sign-in">Sign In</a>
-      </Button>
-
-            )}
+            <SignedIn>
+              <UserButton 
+                appearance={{
+                  elements: {
+                    avatarBox: "h-9 w-9"
+                  }
+                }}
+                data-testid="button-user-menu"
+              />
+            </SignedIn>
+            <SignedOut>
+              <SignInButton mode="modal">
+                <Button data-testid="button-login">Sign In</Button>
+              </SignInButton>
+            </SignedOut>
 
             {/* Mobile Menu Button */}
             <Button
