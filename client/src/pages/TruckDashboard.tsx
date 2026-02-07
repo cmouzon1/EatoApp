@@ -1,3 +1,4 @@
+import { useClerk } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -20,6 +21,7 @@ import {
 import { z } from "zod";
 
 // Extended schema for schedule form to accept string dates from HTML input
+const { openSignIn } = useClerk();
 const scheduleFormSchema = insertScheduleSchema.extend({
   date: z.coerce.date(),
 });
@@ -50,7 +52,7 @@ export default function TruckDashboard() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        openSignIn({ redirectUrl: window.location.pathname });
       }, 500);
     }
   }, [isAuthenticated, isLoading, toast]);
