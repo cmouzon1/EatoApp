@@ -1,3 +1,4 @@
+import { SignInButton } from "@clerk/clerk-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
@@ -198,9 +199,11 @@ export default function EventDetail() {
                   <p className="text-sm text-muted-foreground">
                     Sign in to apply for this event with your food truck
                   </p>
-                  <Button className="w-full" asChild data-testid="button-sign-in">
-                    <a href="/api/login">Sign In to Apply</a>
-                  </Button>
+                  <SignInButton mode="modal">
+  <Button className="w-full" data-testid="button-sign-in">
+    Sign In to Apply
+  </Button>
+</SignInButton>
                 </CardContent>
               </Card>
             ) : (
