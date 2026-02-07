@@ -1,3 +1,4 @@
+import { useClerk } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -21,6 +22,7 @@ import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function OrganizerDashboard() {
+  const { openSignIn } = useClerk();
   const { user, isAuthenticated, isLoading, subscription } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -33,7 +35,7 @@ export default function OrganizerDashboard() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        openSignIn({ redirectUrl: window.location.pathname });
       }, 500);
     }
   }, [isAuthenticated, isLoading, toast]);
