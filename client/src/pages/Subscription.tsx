@@ -1,3 +1,4 @@
+import { useClerk } from "@clerk/clerk-react";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -15,6 +16,7 @@ type SubscriptionStatus = {
 };
 
 // Role-specific pricing
+const { openSignIn } = useClerk();
 const PRICING = {
   truck_owner: {
     basic: { price: "$49", description: "Starter tools for food trucks" },
@@ -42,7 +44,7 @@ export default function Subscription() {
         description: "You need to be logged in to manage subscriptions",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        openSignIn({ redirectUrl: window.location.pathname });
       }, 500);
     }
   }, [isAuthenticated, authLoading, toast]);
