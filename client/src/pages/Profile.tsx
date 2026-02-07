@@ -1,3 +1,4 @@
+import { useClerk } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,6 +17,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getRoleDisplayName } from "@/lib/navigation";
 
 export default function Profile() {
+  const { openSignIn } = useClerk();
   const { user, isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
   const [firstName, setFirstName] = useState("");
@@ -32,7 +34,7 @@ export default function Profile() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        openSignIn({ redirectUrl: window.location.pathname });
       }, 500);
     }
   }, [isAuthenticated, isLoading, toast]);
