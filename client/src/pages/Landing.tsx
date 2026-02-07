@@ -1,3 +1,4 @@
+import { SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -51,9 +52,21 @@ export default function Landing() {
             collaborate, and create amazing food experiences
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" asChild className="text-base px-8" data-testid="button-get-started">
-              <a href="/api/login">Get Started</a>
-            </Button>
+            <SignedOut>
+  <Button size="lg" asChild className="text-base px-8" data-testid="button-get-started">
+    <SignUpButton mode="modal">Get Started</SignUpButton>
+  </Button>
+
+  <Button size="lg" variant="secondary" asChild className="text-base px-8" data-testid="button-sign-up">
+    <SignUpButton mode="modal">Sign Up Now</SignUpButton>
+  </Button>
+</SignedOut>
+
+<SignedIn>
+  <Button size="lg" asChild className="text-base px-8">
+    <a href="/profile">Get Started</a>
+  </Button>
+</SignedIn>
             <Button
               size="lg"
               variant="outline"
@@ -116,9 +129,21 @@ export default function Landing() {
           <p className="text-lg mb-8 opacity-95">
             Join our marketplace today and start connecting with amazing opportunities
           </p>
-          <Button size="lg" variant="secondary" asChild className="text-base px-8">
-            <a href="/api/login" data-testid="button-sign-up">Sign Up Now</a>
-          </Button>
+          <SignedOut>
+  <Button size="lg" asChild className="text-base px-8" data-testid="button-get-started">
+    <SignUpButton mode="modal">Get Started</SignUpButton>
+  </Button>
+
+  <Button size="lg" variant="secondary" asChild className="text-base px-8" data-testid="button-sign-up">
+    <SignUpButton mode="modal">Sign Up Now</SignUpButton>
+  </Button>
+</SignedOut>
+
+<SignedIn>
+  <Button size="lg" asChild className="text-base px-8">
+    <a href="/profile">Get Started</a>
+  </Button>
+</SignedIn>
         </div>
       </section>
     </div>
