@@ -4,7 +4,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useAuth } from "@/hooks/useAuth";
+import { useUser } from "@clerk/clerk-react";
 import { Header } from "@/components/Header";
 import { ProfileCompletionPrompt } from "@/components/ProfileCompletionPrompt";
 import Landing from "@/pages/Landing";
@@ -24,7 +24,13 @@ import DevTools from "@/pages/DevTools";
 import NotFound from "@/pages/not-found";
 
 function Router() {
-  const { isAuthenticated, isLoading, hasCompletedProfile } = useAuth();
+  const { isSignedIn, isLoaded } = useUser();
+
+const isAuthenticated = isSignedIn;
+const isLoading = !isLoaded;
+
+// MVP: until you build profile completion, assume true so routing works
+const hasCompletedProfile = true;
 
   // Show profile completion prompt for authenticated users without completed profiles
   // (except on profile, subscription, and payment pages - users need these to complete onboarding)
