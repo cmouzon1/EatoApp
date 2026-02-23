@@ -3,8 +3,8 @@ import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { UserCircle, CheckCircle } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-
+import { useUser } from "@clerk/clerk-react";
+;
 export function ProfileCompletionPrompt() {
   const [, setLocation] = useLocation();
   const { hasCompletedProfile, isLoading } = useAuth();
