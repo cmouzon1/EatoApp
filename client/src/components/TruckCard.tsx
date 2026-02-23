@@ -16,7 +16,8 @@ interface TruckCardProps {
 
 export function TruckCard({ truck }: TruckCardProps) {
   const imageUrl = truck.images?.[0] || placeholderTruck;
-  const { user, isAuthenticated } = useAuth();
+  const { user, isSignedIn } = useUser();
+const isAuthenticated = isSignedIn;
   const { toast } = useToast();
 
   // Fetch user's favorites
