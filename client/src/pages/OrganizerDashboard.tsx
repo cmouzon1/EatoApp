@@ -23,7 +23,14 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function OrganizerDashboard() {
   const { openSignIn } = useClerk();
-  const { user, isAuthenticated, isLoading, subscription } = useAuth();
+  const { openSignIn } = useClerk();
+const { user, isSignedIn, isLoaded } = useUser();
+
+const isAuthenticated = isSignedIn;
+const isLoading = !isLoaded;
+
+// MVP placeholder until you wire DB subscription lookup
+const subscription = null;
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
