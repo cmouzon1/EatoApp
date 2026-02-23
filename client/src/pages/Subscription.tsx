@@ -33,7 +33,9 @@ const PRICING = {
 };
 
 export default function Subscription() {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isSignedIn, isLoaded } = useUser();
+const isAuthenticated = isSignedIn;
+const isLoading = !isLoaded;
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
 
