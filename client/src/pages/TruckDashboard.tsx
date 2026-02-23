@@ -41,7 +41,14 @@ import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function TruckDashboard() {
-  const { user, isAuthenticated, isLoading, isTruckOwner, subscription } = useAuth();
+  const { user, isSignedIn, isLoaded } = useUser();
+
+const isAuthenticated = isSignedIn;
+const isLoading = !isLoaded;
+
+// MVP placeholders until DB role/subscription are wired
+const isTruckOwner = false;
+const subscription = null;
   const { toast } = useToast();
 
   useEffect(() => {
