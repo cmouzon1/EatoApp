@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 
 export default function DevTools() {
-  const { user } = useAuth();
+  const { user } = useUser();
   const { toast } = useToast();
 
   return (
