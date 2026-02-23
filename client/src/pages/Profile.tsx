@@ -18,7 +18,9 @@ import { getRoleDisplayName } from "@/lib/navigation";
 
 export default function Profile() {
   const { openSignIn } = useClerk();
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isSignedIn, isLoaded } = useUser();
+const isAuthenticated = isSignedIn;
+const isLoading = !isLoaded;
   const { toast } = useToast();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
