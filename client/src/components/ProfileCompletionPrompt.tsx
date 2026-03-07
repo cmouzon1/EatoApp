@@ -1,13 +1,15 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
+import { useUser } from "@clerk/clerk-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { UserCircle, CheckCircle } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
 ;
 export function ProfileCompletionPrompt() {
   const [, setLocation] = useLocation();
-  const { hasCompletedProfile, isLoading } = useAuth();
+  const { isLoaded } = useUser();
+const isLoading = !isLoaded;
+const hasCompletedProfile = true; // MVP: always true, profile completion handled elsewhere
 
   useEffect(() => {
     // If profile is completed, redirect to home
