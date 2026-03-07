@@ -1,7 +1,6 @@
-import { useClerk } from "@clerk/clerk-react";
+import { useClerk, useUser } from "@clerk/clerk-react";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,14 +32,15 @@ const PRICING = {
 };
 
 export default function Subscription() {
-  const { user, isSignedIn, isLoaded } = useUser();
+  const { openSignIn } = useClerk();
+const { user, isSignedIn, isLoaded } = useUser();
 const isAuthenticated = isSignedIn;
 const isLoading = !isLoaded;
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       toast({
         title: "Please log in",
         description: "You need to be logged in to manage subscriptions",
@@ -49,9 +49,9 @@ const isLoading = !isLoaded;
         openSignIn({ redirectUrl: window.location.pathname });
       }, 500);
     }
-  }, [isAuthenticated, authLoading, toast]);
+  }, [isAuthenticated, isLoading, toast]);
 
-  const { data: subscriptionStatus, isLoading } = useQuery<SubscriptionStatus>({
+  const { data: subscriptionStatus } = useQuery<SubscriptionStatus>({
     queryKey: ['/api/subscription/status'],
     enabled: isAuthenticated,
   });
@@ -139,7 +139,7 @@ const isLoading = !isLoaded;
     activateFreeMutation.mutate();
   };
 
-  if (authLoading || isLoading) {
+  if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
