@@ -1,9 +1,8 @@
-import { SignInButton } from "@clerk/clerk-react";
+import { SignInButton, useUser } from "@clerk/clerk-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Event as EventType, Truck as TruckType } from "@shared/schema";
-import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +15,9 @@ import placeholderEvent from "@assets/generated_images/Corporate_event_venue_b6e
 export default function EventDetail() {
   const [, params] = useRoute("/events/:id");
   const eventId = params?.id ? parseInt(params.id) : null;
-  const { user, isAuthenticated, isTruckOwner } = useAuth();
+  const { user, isSignedIn } = useUser();
+const isAuthenticated = isSignedIn;
+const isTruckOwner = user?.publicMetadata?.role === "truck_owner";
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [selectedTruckId, setSelectedTruckId] = useState<number | null>(null);
 
