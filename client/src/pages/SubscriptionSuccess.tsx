@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
-import { useAuth } from "@/hooks/useAuth";
+import { useUser } from "@clerk/clerk-react";
 import { getDashboardPath, getRoleDisplayName } from "@/lib/navigation";
 
 export default function SubscriptionSuccess() {
   const [, setLocation] = useLocation();
-  const { userRole, subscription } = useAuth();
+  const { user } = useUser();
+const userRole = user?.publicMetadata?.role as string | undefined;
+const subscription = null; // MVP: subscription fetched separately
 
   useEffect(() => {
     // Invalidate queries to refresh user data with subscription info
