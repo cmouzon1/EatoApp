@@ -1,11 +1,10 @@
-import { useClerk } from "@clerk/clerk-react";
+import { useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Event as EventType, Booking as BookingType, Truck as TruckType, Invite as InviteType, insertInviteSchema } from "@shared/schema";
 import { EventCard } from "@/components/EventCard";
@@ -22,7 +21,6 @@ import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function OrganizerDashboard() {
-  const { openSignIn } = useClerk();
   const { openSignIn } = useClerk();
 const { user, isSignedIn, isLoaded } = useUser();
 
