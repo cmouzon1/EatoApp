@@ -1,5 +1,4 @@
 import { useClerk, useUser } from "@clerk/clerk-react";
-import { useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -19,11 +18,6 @@ import {
   insertApplicationSchema 
 } from "@shared/schema";
 import { z } from "zod";
-
-// Extended schema for schedule form to accept string dates from HTML input
-const scheduleFormSchema = insertScheduleSchema.extend({
-  date: z.coerce.date(),
-});
 import { TruckCard } from "@/components/TruckCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,9 +32,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Truck, Plus, Calendar, DollarSign, CheckCircle, Crown, Sparkles, BarChart3, Heart, Users, Bell, Megaphone, MapPin, Trash2, Mail, Send, X, Check } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-
-export default function TruckDashboard() {
-  const { user, isSignedIn, isLoaded } = useUser();
+// Extended schema for schedule form to accept string dates from HTML input
+const scheduleFormSchema = insertScheduleSchema.extend({
+  date: z.coerce.date(),
+});
 export default function TruckDashboard() {
   const { openSignIn } = useClerk();
   const { user, isSignedIn, isLoaded } = useUser();
