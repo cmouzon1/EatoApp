@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/useAuth";
+import { useUser } from "@clerk/clerk-react";
 import { useToast } from "@/hooks/use-toast";
 import { insertTruckSchema } from "@shared/schema";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { z } from "zod";
 
 export default function NewTruck() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isSignedIn } = useUser();
+const isAuthenticated = isSignedIn;
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
