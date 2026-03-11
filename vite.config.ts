@@ -7,10 +7,10 @@ export default defineConfig({
     react(),
   ],
   optimizeDeps: {
-  include: ["react", "react-dom", "@clerk/clerk-react"],
-  exclude: [],
-  force: true,
-},
+    include: ["react", "react-dom", "@clerk/clerk-react"],
+    exclude: [],
+    force: true,
+  },
   resolve: {
     dedupe: ["react", "react-dom", "@clerk/clerk-react"],
     alias: {
@@ -24,22 +24,23 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     rollupOptions: {
-  external: [],
-  output: {
-    manualChunks(id) {
-      if (id.includes('node_modules/react-dom/')) {
-        return 'react-dom';
-      }
-      if (id.includes('node_modules/react/')) {
-        return 'react';
-      }
-      if (id.includes('@clerk')) {
-        return 'clerk';
-      }
+      external: [],
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react-dom/')) {
+            return 'react-dom';
+          }
+          if (id.includes('node_modules/react/')) {
+            return 'react';
+          }
+          if (id.includes('@clerk')) {
+            return 'clerk';
+          }
+        },
+        chunkFileNames: 'assets/[name]-[hash].js',
+      },
     },
-    chunkFileNames: 'assets/[name]-[hash].js',
-  }
-},
+  },
   server: {
     fs: {
       strict: true,
