@@ -7,10 +7,10 @@ export default defineConfig({
     react(),
   ],
   optimizeDeps: {
-  include: ["react", "react-dom", "@clerk/clerk-react"],
-},
-resolve: {
-  dedupe: ["react", "react-dom", "@clerk/clerk-react"],
+    include: ["react", "react-dom", "@clerk/clerk-react"],
+  },
+  resolve: {
+    dedupe: ["react", "react-dom", "@clerk/clerk-react"],
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
@@ -22,18 +22,18 @@ resolve: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     rollupOptions: {
-  input: path.resolve(import.meta.dirname, 'client/index.html'),
-  output: {
-    manualChunks(id) {
-      if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
-        return 'react';
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            return 'react';
+          }
+          if (id.includes('@clerk/clerk-react')) {
+            return 'clerk';
+          }
+        }
       }
-      if (id.includes('@clerk/clerk-react')) {
-        return 'clerk';
-      }
-    }
-  }
-}
+    },
+  },
   server: {
     fs: {
       strict: true,
