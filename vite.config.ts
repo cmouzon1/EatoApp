@@ -3,12 +3,9 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 export default defineConfig({
-  plugins: [
-    react(),
-  ],
+  plugins: [react()],
   optimizeDeps: {
     include: ["react", "react-dom", "@clerk/clerk-react"],
-    exclude: [],
     force: true,
   },
   resolve: {
@@ -24,20 +21,12 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     rollupOptions: {
-      external: [],
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules/react-dom/')) {
-            return 'react-dom';
-          }
-          if (id.includes('node_modules/react/')) {
-            return 'react';
-          }
-          if (id.includes('@clerk')) {
-            return 'clerk';
-          }
+          if (id.includes("node_modules/react-dom/")) return "react-dom";
+          if (id.includes("node_modules/react/")) return "react";
+          if (id.includes("@clerk")) return "clerk";
         },
-        chunkFileNames: 'assets/[name]-[hash].js',
       },
     },
   },
