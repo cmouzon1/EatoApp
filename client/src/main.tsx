@@ -6,7 +6,8 @@ import "./index.css";
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
+  console.error("Missing VITE_CLERK_PUBLISHABLE_KEY");
+  // Don't throw — let the app render and show an error state
 }
 
 createRoot(document.getElementById("root")!).render(
