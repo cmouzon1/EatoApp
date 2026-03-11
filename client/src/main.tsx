@@ -1,4 +1,5 @@
-import { createRoot } from "react-dom/client";
+import React from "react";
+import ReactDOM from "react-dom/client";
 import { ClerkProvider } from "@clerk/clerk-react";
 import App from "./App";
 import "./index.css";
@@ -7,11 +8,12 @@ const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 if (!clerkPubKey) {
   console.error("Missing VITE_CLERK_PUBLISHABLE_KEY");
-  // Don't throw — let the app render and show an error state
 }
 
-createRoot(document.getElementById("root")!).render(
-  <ClerkProvider publishableKey={clerkPubKey}>
-    <App />
-  </ClerkProvider>
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <ClerkProvider publishableKey={clerkPubKey ?? ""}>
+      <App />
+    </ClerkProvider>
+  </React.StrictMode>
 );
