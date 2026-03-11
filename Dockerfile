@@ -8,10 +8,9 @@ RUN npm install
 
 COPY . .
 
-RUN npm run build 2>&1 || echo "BUILD FAILED"
+RUN npx vite build --debug 2>&1 | tail -50
 
-RUN ls -la dist/ || echo "NO DIST FOLDER"
-RUN ls -la dist/public/ || echo "NO DIST/PUBLIC FOLDER"
+RUN ls -la dist/public/
 
 EXPOSE 8080
 
