@@ -22,14 +22,18 @@ resolve: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     rollupOptions: {
-      output: {
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          clerk: ['@clerk/clerk-react'],
-        }
+  input: path.resolve(import.meta.dirname, 'client/index.html'),
+  output: {
+    manualChunks(id) {
+      if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+        return 'react';
+      }
+      if (id.includes('@clerk/clerk-react')) {
+        return 'clerk';
       }
     }
-  },
+  }
+}
   server: {
     fs: {
       strict: true,
