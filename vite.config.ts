@@ -7,10 +7,10 @@ export default defineConfig({
     react(),
   ],
   optimizeDeps: {
-    include: ["react", "react-dom"],
-  },
-  resolve: {
-    dedupe: ["react", "react-dom"],
+  include: ["react", "react-dom", "@clerk/clerk-react"],
+},
+resolve: {
+  dedupe: ["react", "react-dom", "@clerk/clerk-react"],
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
